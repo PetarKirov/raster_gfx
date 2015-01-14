@@ -1,2 +1,2 @@
-# raster_gfx
-Examples of rasterisation algorithms.
+# Raster GFX
+Examples of rasterization algorithms.
