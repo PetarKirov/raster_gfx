@@ -48,12 +48,44 @@ struct SDL2Gui
 		renderer.present();
 	}
 
-	void draw(SRC)(auto ref SRC image) if (isView!SRC)
+	void draw(SRC)(auto ref SRC buf)
 	{		
-		void* pixels = surface.pixels;
+		uint[] pixels = (cast(uint*)surface.pixels)[0 .. width * height];
 
-		foreach (y; 0 .. surface.height)
-			(cast(uint*)pixels)[y * surface.width .. (y + 1 )* surface.width] = cast(uint[])image.scanline(y);
+		if (buf.xRatio == 1 && buf.yRatio == 1)
+		{
+			pixels[] = cast(uint[])buf.img.pixels[];
+		}
+		else
+		{
+			auto img = buf.img;
+
+			auto xRatio = buf.xRatio;
+			auto yRatio = buf.yRatio;
+
+			foreach (y; 0 .. img.h)
+			{
+				auto row = y * yRatio;
+				auto rowStart = row * width;
+				auto rowEnd = (row + 1) * width;
+
+				foreach (x; 0 .. img.w)
+				{
+					auto colStart = x * xRatio;
+					auto pos = rowStart + colStart;
+					pixels[pos .. pos + xRatio] = cast(uint)img[x, y];
+				}
+
+				// Repeat each row (yRatio - 1) times
+				foreach (pY; 1 .. yRatio)
+				{
+					auto nextRowStart = rowStart + width * pY;
+					auto nextRowEnd = rowEnd + width * pY;
+					pixels[nextRowStart .. nextRowEnd] =
+						pixels[rowStart .. rowEnd];
+				}
+			}
+		}
 		
 		texture.updateTexture(surface.pixels, surface.pitch);
 		renderer.clear();

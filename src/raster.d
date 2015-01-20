@@ -2,8 +2,30 @@ module raster;
 
 import core.thread : Fiber;
 
-import ae.utils.graphics.image;
-import color;
+import frame_buf;
+
+struct Point
+{
+	uint x;
+	uint y;
+
+	this(uint x, uint y, uint pixelSize)
+	{
+		this.x = x / pixelSize;
+		this.y = y / pixelSize;
+	}
+
+	this(uint x, uint y)
+	{
+		this.x = x;
+		this.y = y;
+	}
+
+	Point opBinary(string op)(Point other) if (op == "+" || op == "-")
+	{
+		return Point(x + other.x, y + other.y);
+	}
+}
 
 void each(Range, F)(Range range, F func)
 {
@@ -11,68 +33,101 @@ void each(Range, F)(Range range, F func)
 		func(elem);
 }
 
-bool IsInRange(Image!Color img, int x, int y)
+bool IsInRange(FrameBuf img, int x, int y)
 {
 	return (x >= 0 && x < img.w) &&
 		(y >= 0 && y < img.h);
 }
 
-void PutPixel(Image!Color img, int x, int y, Color color)
+bool IsInRange(FrameBuf img, Point p)
+{
+	return img.IsInRange(p.x, p.y);
+}
+
+void PutPixel(FrameBuf img, int x, int y, Color color)
 {
 	img[x, y] = color;
 }
 
-Color GetPixel(Image!Color img, int x, int y)
+void PutPixel(FrameBuf img, Point p, Color color)
+{
+	img.PutPixel(p.x, p.y, color);
+}
+
+Color GetPixel(FrameBuf img, int x, int y)
 {
 	return img[x, y];
 }
 
-void FourSymmetric(Image!Color img, int xc, int yc, int x, int y, Color color)
+Color GetPixel(FrameBuf img, Point p)
 {
-	img.PutPixel(xc + x, yc + y, color);
-	img.PutPixel(xc - x, yc - y, color);
-	img.PutPixel(xc - x, yc + y, color);
-	img.PutPixel(xc + x, yc - y, color);
+	return img.GetPixel(p.x, p.y);
 }
 
-void DrawBresenhamCircle(Image!Color img, int xc, int yc, int R, Color color)
+void FourSymmetric(FrameBuf img, Point c, Point d, Color color)
+{
+	img.PutPixel(c.x + d.x, c.y + d.y, color);
+	img.PutPixel(c.x - d.x, c.y - d.y, color);
+	img.PutPixel(c.x - d.x, c.y + d.y, color);
+	img.PutPixel(c.x + d.x, c.y - d.y, color);
+}
+
+void DrawBresenhamCircle(FrameBuf img, Point c, int R, Color color)
 {
 	int x = 0, y = R, d = 2 - 2*R;
 	
-	img.PutPixel(    xc,  yc + R, color);
-	img.PutPixel(	 xc,  yc - R, color);
-	img.PutPixel(xc + R,      yc, color);
-	img.PutPixel(xc - R,      yc, color);
+	img.PutPixel(    c.x,  c.y + R, color);
+	img.PutPixel(	 c.x,  c.y - R, color);
+	img.PutPixel(c.x + R,      c.y, color);
+	img.PutPixel(c.x - R,      c.y, color);
 	
 	while (true) {
 		if (d > -y) { y--; d += 1 - 2 * y; }
 		if (d <= x) { x++; d += 1 + 2 * x; }
 		if (!y) return;
-		img.FourSymmetric(xc, yc, x, y, color);
+		img.FourSymmetric(c, Point(x, y), color);
 		
 		Fiber.yield();
 	}
 }
 
-void SimpleFloodFill_4(Image!Color img, int x, int y, Color newValue, Color oldValue)
-{		
+void SimpleFloodFill_4(FrameBuf img, Point p, Color newValue, Color oldValue)
+{
+	uint x = p.x;
+	uint y = p.y;
+
+	import std.stdio;
+
+	write(x, " ", y, " ");
+
 	if (!img.IsInRange(x, y))
 		return;
 
-	if (img.GetPixel (x,y) == oldValue)
+	write("pass ");
+
+	auto currentVal = img.GetPixel(x,y);
+
+
+	if (currentVal == oldValue)
 	{
-		img.PutPixel (x, y, newValue);
+		img.PutPixel(x, y, newValue);
+
+		writeln("draw");
 
 		Fiber.yield();
 
-		img.SimpleFloodFill_4(x-1, y, newValue, oldValue);
-		img.SimpleFloodFill_4(x+1, y, newValue, oldValue);
-		img.SimpleFloodFill_4(x, y-1, newValue, oldValue);
-		img.SimpleFloodFill_4(x, y+1, newValue, oldValue);
+		img.SimpleFloodFill_4(Point(x-1, y), newValue, oldValue);
+		img.SimpleFloodFill_4(Point(x+1, y), newValue, oldValue);
+		img.SimpleFloodFill_4(Point(x, y-1), newValue, oldValue);
+		img.SimpleFloodFill_4(Point(x, y+1), newValue, oldValue);
+	}
+	else
+	{
+		writeln("nop");
 	}
 }
 
-void SimpleBoundryFill_4(Image!Color img, int x, int y, Color newValue, Color borderValue)
+void SimpleBoundryFill_4(FrameBuf img, int x, int y, Color newValue, Color borderValue)
 {
 	Color value;
 
@@ -89,61 +144,60 @@ void SimpleBoundryFill_4(Image!Color img, int x, int y, Color newValue, Color bo
 	//}
 }
 
-void drawBresenhamLine(Image!Color img, int x1, int y1, int x2, int y2, Color color)
+void drawBresenhamLine(FrameBuf img, Point p1, Point p2, Color color)
 {
 	import std.math : abs;
+	import std.algorithm : swap;
 
-	int dx = abs(x2 - x1),
-		dy = abs(y2 - y1);
-		
-	bool reverse = dx < dy;
-	if (reverse)
+	int x1 = p1.x, y1 = p1.y;
+	int x2 = p2.x, y2 = p2.y;
+
+	// Bresenham's line algorithm
+	const bool steep = (abs(y2 - y1) > abs(x2 - x1));
+	if(steep)
 	{
-		//d = X1;
-		//X1 = Y1;
-		//Y1 = d;
-		//
-		//d = X2;
-		//X2 = Y2;
-		//Y2 = d;
-		//
-		//d = dx;
-		//dx = dy;
-		//dy = d;
+		swap(x1, y1);
+		swap(x2, y2);
 	}
-	
-	int incUp = 2 * dx + 2 * dy;
-	int incDown = 2 * dy;	
-		
-	int incX = (x1 <= x2)? 1 : -1;
-	int incY = (y1 <= y2)? 1 : -1;
-	
-	int d = -dx + 2 * dy;
-	int x = x1, y = y1, n = dx + 1;
-	
-	while (n--)
-	{
-		Fiber.yield();
 
-		if (reverse)
-			img[y, x] = color;
-		else
-			img[x, y] = color;
-		
-		x += incX;
-		
-		if (d > 0)
+	if(x1 > x2)
+	{
+		swap(x1, x2);
+		swap(y1, y2);
+	}
+
+	const float dx = x2 - x1;
+	const float dy = abs(y2 - y1);
+
+	float error = dx / 2.0f;
+	const int ystep = (y1 < y2) ? 1 : -1;
+	int y = y1;
+
+	const int maxX = x2;
+
+	for(int x = x1; x < maxX; x++)
+	{
+		if(steep)
 		{
-			d += incUp; y += incY;
+			img.PutPixel(y, x, color);
 		}
 		else
-			d += incDown;
+		{
+			img.PutPixel(x, y, color);
+		}
+
+		error -= dy;
+		if(error < 0)
+		{
+			y += ystep;
+			error += dx;
+		}
 	}
 }
 
 
 
-void drawGradient(Image!Color img)
+void drawGradient(FrameBuf img)
 {
 	foreach (y; 0 .. img.h)
 		foreach (x; 0 .. img.w)

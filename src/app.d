@@ -2,9 +2,7 @@
 import std.datetime;
 import std.stdio;
 
-import ae.utils.graphics.image;
-import sdl2gui, color;
-import raster;
+import frame_buf, sdl2gui, raster;
 
 struct FrameWatch
 {
@@ -23,14 +21,20 @@ struct FrameWatch
 }
 
 void main()
-{	
+{
 	uint w = 640, h = 480;
+	uint ps = 3; // pixel size
 	auto gui = SDL2Gui(w, h, "Task 1");
-	auto image = Image!Color();
-	image.size(w, h);
+
+	FrameBuf image = void;
+
+	if (ps > 1)
+		image = FrameBuf(w / ps, h / ps, ps, ps);
+	else if (ps == 1)
+		image = FrameBuf(w, h);
 	
-	auto animationFiber = new Fiber({ image.drawStuff(); },
-									64 * 1024 * 1024);
+	auto fiberStackSize = 64 * 1024 * 1024;
+	auto animationFiber = new Fiber({ image.drawStuff(ps); }, fiberStackSize);
 	
 	auto fw = FrameWatch();
 	fw.start();
@@ -42,7 +46,9 @@ void main()
 		animationFiber.call();
 		
 		if (animationFiber.state == Fiber.State.TERM)
-			break;		
+		    break;
+
+		//image.drawStuff();
 		
 		gui.draw(image);
 		gui.sdl2.processEvents();		
@@ -52,18 +58,18 @@ void main()
 	gui.waitForExit();
 }
 
-void drawStuff(Image!Color img)
+void drawStuff(FrameBuf img, uint pixelSize)
 {
 	//drawGradient(img);
 	
-	drawBresenhamLine(img, 50, 30, 320, 100, Color.Orange);
-	//drawBresenhamLine(img, 50, 40, 320, 200, Color.Purple);
-	//drawBresenhamLine(img, 50, 50, 320, 300, Color.Orange);
-	//drawBresenhamLine(img, 50, 50, 320, 400, Color.White);
-	//drawBresenhamLine(img, 50, 60, 320, 500, Color.Pink);
+	drawBresenhamLine(img, Point(50, 30, pixelSize), Point(320, 100, pixelSize), Color.Orange);
+	drawBresenhamLine(img, Point(50, 40, pixelSize), Point(620, 200, pixelSize), Color.Purple);
+	drawBresenhamLine(img, Point(50, 50, pixelSize), Point(500, 300, pixelSize), Color.Orange);
+	drawBresenhamLine(img, Point(50, 50, pixelSize), Point(400, 400, pixelSize), Color.White);
+	drawBresenhamLine(img, Point(50, 60, pixelSize), Point(320, 450, pixelSize), Color.Pink);
 	
-	img.DrawBresenhamCircle(150, 150, 100, Color.CornflowerBlue);
+	img.DrawBresenhamCircle(Point(150, 150, pixelSize), 100 / pixelSize, Color.CornflowerBlue);
 	
-	img.SimpleFloodFill_4(200, 300, Color.Orange, Color.Black);
+	img.SimpleFloodFill_4(Point(200, 300, pixelSize), Color.Yellow, Color.Black);
 }
 
