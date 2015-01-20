@@ -8,6 +8,7 @@ bin/
 *.dll
 
 !libs/*/*.dll
+!lib/*/*.dll
 
 # VisualD and Visual Studio
 *.sln
