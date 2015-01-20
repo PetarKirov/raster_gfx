@@ -1,15 +1,17 @@
 {
-	"name": "raster",
+	"name": "raster_gfx",
 	"description": "Examples of rasterization algorithms.",
 	"copyright": "Copyright © 2014, ZombineDev",
 	"authors": [ "ZombineDev" ],
 	"targetType": "executable",
-	"targetPath": "bin/",
 	
 	"dependencies": {
 		"gfm:sdl2": ">=1.1.7",
 		"ae-graphics": ">=0.0.3",	
 	},
+
+	"copyFiles-windows-x86": ["lib/win32/SDL2.dll"],
+	"copyFiles-windows-x86_64": ["lib/win64/SDL2.dll"],
 	
 	"configurations": [
 		{
