@@ -2,7 +2,7 @@
 import std.datetime;
 import std.stdio;
 
-import frame_buf, sdl2gui, raster;
+import primitives, frame_buf, sdl2gui, raster;
 
 struct FrameWatch
 {
@@ -33,43 +33,54 @@ void main()
 	else if (ps == 1)
 		image = FrameBuf(w, h);
 	
-	auto fiberStackSize = 64 * 1024 * 1024;
-	auto animationFiber = new Fiber({ image.drawStuff(ps); }, fiberStackSize);
-	
 	auto fw = FrameWatch();
 	fw.start();
 	fw.throttleBack(500.msecs);
-	
-	// Animation loop
-	while(!gui.isQuitRequested)
-	{	
-		animationFiber.call();
-		
-		if (animationFiber.state == Fiber.State.TERM)
-		    break;
 
-		//image.drawStuff();
-		
-		gui.draw(image);
-		gui.sdl2.processEvents();		
-		//fw.throttleBack(64.msecs);
+	void draw(Fiber drawFiber, Duration wantedFrameTime)
+	{
+		while(!gui.isQuitRequested && drawFiber.state != Fiber.State.TERM)
+		{
+			drawFiber.call();
+			gui.draw(image);
+			gui.processEvents();
+
+			if (wantedFrameTime > 1.msecs)
+				fw.throttleBack(wantedFrameTime);
+		}
 	}
+
+	auto fiberStackSize = 64 * 1024 * 1024;
+
+	draw(new Fiber({ image.drawFastStuff(); }, fiberStackSize),
+		 16.msecs);
+
+	draw(new Fiber({ image.drawSlowStuff(); }, fiberStackSize),
+		 0.msecs);
 	
 	gui.waitForExit();
 }
 
-void drawStuff(FrameBuf img, uint pixelSize)
+void drawFastStuff(FrameBuf img)
 {
-	//drawGradient(img);
+	auto ps = img.pixelSize;
+
+	img.drawGradient();
 	
-	drawBresenhamLine(img, Point(50, 30, pixelSize), Point(320, 100, pixelSize), Color.Orange);
-	drawBresenhamLine(img, Point(50, 40, pixelSize), Point(620, 200, pixelSize), Color.Purple);
-	drawBresenhamLine(img, Point(50, 50, pixelSize), Point(500, 300, pixelSize), Color.Orange);
-	drawBresenhamLine(img, Point(50, 50, pixelSize), Point(400, 400, pixelSize), Color.White);
-	drawBresenhamLine(img, Point(50, 60, pixelSize), Point(320, 450, pixelSize), Color.Pink);
+	img.drawBresenhamLine(Point(50, 30, ps), Point(320, 100, ps), Color.Orange);
+	img.drawBresenhamLine(Point(50, 40, ps), Point(620, 200, ps), Color.Purple);
+	img.drawBresenhamLine(Point(50, 50, ps), Point(500, 300, ps), Color.Orange);
+	img.drawBresenhamLine(Point(50, 50, ps), Point(400, 400, ps), Color.White);
+	img.drawBresenhamLine(Point(50, 60, ps), Point(320, 450, ps), Color.Pink);
 	
-	img.DrawBresenhamCircle(Point(150, 150, pixelSize), 100 / pixelSize, Color.CornflowerBlue);
+	assert(ps.x == ps.y, "Pixels should be square");
+	img.DrawBresenhamCircle(Point(150, 150, ps), 100 / ps.x, Color.CornflowerBlue);
 	
-	img.SimpleFloodFill_4(Point(200, 300, pixelSize), Color.Yellow, Color.Black);
+}
+
+void drawSlowStuff(FrameBuf img)
+{
+	auto ps = img.pixelSize;
+	img.SimpleFloodFill_4(Point(200, 300, ps), Color.Yellow, Color.Black);
 }
 

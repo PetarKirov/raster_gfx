@@ -1,23 +1,20 @@
 module frame_buf;
 
-import ae.utils.graphics.image;
+import ae.utils.graphics.image : Image;
+import primitives : Size;
+
 public import color;
 
 struct FrameBuf
 {
 	Image!Color img;
+	Size pixelSize;
 
 	alias img this;
 
-	uint xRatio;
-	uint yRatio;
-
-	this(uint width, uint height, uint xRatio = 1, uint yRatio = 1)
+	this(uint imageWidth, uint imageHeight, uint pixelWidth = 1, uint pixelHeight = 1)
 	{
-		this.img.size(width, height);
-		this.w = width;
-		this.h = height;
-		this.xRatio = xRatio;
-		this.yRatio = yRatio;
+		this.img.size(imageWidth, imageHeight);
+		this.pixelSize = Size(pixelWidth, pixelHeight);
 	}
 }

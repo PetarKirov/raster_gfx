@@ -2,30 +2,7 @@ module raster;
 
 import core.thread : Fiber;
 
-import frame_buf;
-
-struct Point
-{
-	uint x;
-	uint y;
-
-	this(uint x, uint y, uint pixelSize)
-	{
-		this.x = x / pixelSize;
-		this.y = y / pixelSize;
-	}
-
-	this(uint x, uint y)
-	{
-		this.x = x;
-		this.y = y;
-	}
-
-	Point opBinary(string op)(Point other) if (op == "+" || op == "-")
-	{
-		return Point(x + other.x, y + other.y);
-	}
-}
+import frame_buf, primitives;
 
 void each(Range, F)(Range range, F func)
 {
@@ -96,14 +73,14 @@ void SimpleFloodFill_4(FrameBuf img, Point p, Color newValue, Color oldValue)
 	uint x = p.x;
 	uint y = p.y;
 
-	import std.stdio;
+	//import std.stdio;
 
-	write(x, " ", y, " ");
+	//write(x, " ", y, " ");
 
 	if (!img.IsInRange(x, y))
 		return;
 
-	write("pass ");
+	//write("pass ");
 
 	auto currentVal = img.GetPixel(x,y);
 
@@ -111,8 +88,6 @@ void SimpleFloodFill_4(FrameBuf img, Point p, Color newValue, Color oldValue)
 	if (currentVal == oldValue)
 	{
 		img.PutPixel(x, y, newValue);
-
-		writeln("draw");
 
 		Fiber.yield();
 
@@ -123,7 +98,7 @@ void SimpleFloodFill_4(FrameBuf img, Point p, Color newValue, Color oldValue)
 	}
 	else
 	{
-		writeln("nop");
+		//writeln("nop");
 	}
 }
 
@@ -186,6 +161,8 @@ void drawBresenhamLine(FrameBuf img, Point p1, Point p2, Color color)
 			img.PutPixel(x, y, color);
 		}
 
+		Fiber.yield();
+
 		error -= dy;
 		if(error < 0)
 		{
@@ -194,8 +171,6 @@ void drawBresenhamLine(FrameBuf img, Point p1, Point p2, Color color)
 		}
 	}
 }
-
-
 
 void drawGradient(FrameBuf img)
 {
