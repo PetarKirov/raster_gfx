@@ -1,11 +1,14 @@
-module sdl2gui;
+module sdl_gui;
 
 import std.experimental.logger;
 import gfm.sdl2, ae.utils.graphics.view;
+import primitives;
 
 //Default SDL2 GUI
-struct SDL2Gui
+class SdlGui
 {
+@trusted:
+
 	immutable uint width, height;
 
 	private SDL2 sdl2;
@@ -15,10 +18,15 @@ struct SDL2Gui
 	private SDL2Texture texture;
 	private Logger log;
 
-	this(uint width, uint height, string title, Logger log = stdlog)
+	this(uint x, uint y, string title)
 	{
-		this.width = width;
-		this.height = height;
+		this(Size(x, y), title);
+	}
+
+	this(Size screenSize, string title, Logger log = stdlog)
+	{
+		this.width = screenSize.x;
+		this.height = screenSize.y;
 		init(title, log);
 	}
 
@@ -66,6 +74,45 @@ struct SDL2Gui
 			sdl2.waitEvent(&temp);
 	}
 
+	void setTitle(string title)
+	{
+		window.setTitle(title);
+	}
+
+	Point getMousePosition(bool buttonPressed)
+	{
+		Point result;
+
+		while(!isQuitRequested)
+		{
+			processEvents();
+
+			if (sdl2.mouse.isButtonPressed(SDL_BUTTON_LMASK) == buttonPressed)
+			{
+				auto pos = sdl2.mouse().position();
+				result = Point(pos.x, pos.y);
+				break;				
+			}
+		}
+
+		return result;
+	}
+
+	Point getPoint()
+	{
+		cast(void)getMousePosition(false);
+
+		return getMousePosition(true);
+	}
+
+	Line getLine()
+	{
+		auto start = getPoint();
+		auto end = getPoint();
+
+		return Line(start, end);
+	}
+
 	void close()
 	{
 		log.log("Attempting to close SDL2 resources.");
@@ -80,10 +127,10 @@ struct SDL2Gui
 	{		
 		uint[] pixels = (cast(uint*)surface.pixels)[0 .. width * height];
 		auto img = buf.img;
-		auto pixelWidth = buf.pixelSize.x;
-		auto pixelHeight = buf.pixelSize.y;
+		auto pixelWidth = buf.metrics.pixelSize.x;
+		auto pixelHeight = buf.metrics.pixelSize.y;
 
-		if (buf.pixelSize.x == 1 && buf.pixelSize.y == 1)
+		if (pixelWidth == 1 && pixelHeight == 1)
 		{
 			pixels[] = cast(uint[])img.pixels[];
 		}

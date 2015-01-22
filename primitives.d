@@ -1,9 +1,27 @@
 module primitives;
 
+struct Metrics
+{
+	Size screenSize;
+	Size pixelSize;
+
+	@trusted this(Size screenSize, Size pixelSize)
+	{
+		this.screenSize = screenSize;
+		this.pixelSize = pixelSize;
+	}
+
+	@disable this(this)
+	{
+	}
+}
+
 struct Point
 {
 	uint x;
 	uint y;
+
+	@system:
 
 	this(uint x, uint y)
 	{
@@ -11,15 +29,36 @@ struct Point
 		this.y = y;
 	}
 
-	this(uint x, uint y, Size pixelSize)
+	this(Point p)
 	{
-		this.x = x / pixelSize.x;
-		this.y = y / pixelSize.y;
+		this(p.x, p.y);
 	}
 
-	Point opBinary(string op)(Point other) if (op == "+" || op == "-")
+	this(this)
 	{
-		return Point(x + other.x, y + other.y);
+	}
+
+	@property Point left() inout { return Point(x - 1, y); }
+	@property Point right() inout { return Point(x + 1, y); }
+	@property Point up() inout { return Point(x, y - 1); }
+	@property Point down() inout { return Point(x, y + 1); }
+	@property Point swap() inout
+	{
+		return Point(y, x);
+	}
+
+	@safe:
+
+	this(uint x, uint y, const ref Metrics metrics)
+	{
+		this.x = x / metrics.pixelSize.x;
+		this.y = y / metrics.pixelSize.y;
+		assert(metrics.screenSize.inRange(this), "The point is outside of the screen!");
+	}
+
+	this(Point p, const ref Metrics metrics)
+	{
+		this(p.x, p.y, metrics);
 	}
 }
 
@@ -29,4 +68,39 @@ struct Line
 {
 	Point start;
 	Point end;
+
+
+	@system:
+
+	this(Point start, Point end)
+	{
+		this.start = start;
+		this.end = end;
+	}
+
+	@trusted:
+
+	this(const ref Point start, const ref Point end, const ref Metrics metrics)
+	{
+		this.start = Point(start, metrics);
+		this.end = Point(end, metrics);
+	}
+
+	this(Line l, const ref Metrics metrics)
+	{
+		this(l.start, l.end, metrics);
+	}
+}
+
+@safe bool inRange(const ref Size screenSize, const ref Point p)
+{
+	return (p.x >= 0 && p.x < screenSize.x) &&
+		(p.y >= 0 && p.y < screenSize.y);
+}
+
+@safe uint distanceTo(const ref Point p1, const ref Point p2)
+{
+	int dx = p1.x - p2.x;
+	int dy = p1.y - p2.y;
+	return cast(uint)((dx ^^ 2.0 + dy ^^ 2.0) ^^ 0.5);
 }
