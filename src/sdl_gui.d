@@ -1,8 +1,10 @@
 module sdl_gui;
 
+import core.thread : Fiber;
+import std.datetime : Duration, msecs;
 import std.experimental.logger;
-import gfm.sdl2, ae.utils.graphics.view;
-import primitives;
+import gfm.sdl2;
+import primitives, frame_buf, frame_watch;
 
 //Default SDL2 GUI
 class SdlGui
@@ -18,19 +20,18 @@ class SdlGui
 	private SDL2Texture texture;
 	private Logger log;
 
-	this(uint x, uint y, string title)
+	// Used to prevent over-drawing if a fiber tries call the draw method,
+	// instead of waiting for us to call it after the fiber yields.
+	private bool fiberCalled = false;
+
+	this(uint x, uint y, string title, Logger log = stdlog)
 	{
-		this(Size(x, y), title);
+		this.width = x;
+		this.height = y;
+		initSDL(title, log);
 	}
 
-	this(Size screenSize, string title, Logger log = stdlog)
-	{
-		this.width = screenSize.x;
-		this.height = screenSize.y;
-		init(title, log);
-	}
-
-	void init(string title, Logger log_)
+	private void initSDL(string title, Logger log_)
 	{
 		log = log_;
 		sdl2 = new SDL2(log);
@@ -61,8 +62,35 @@ class SdlGui
 		sdl2.processEvents();
 	}
 
+	@trusted void drawWithFiber(FrameBuf buf, Fiber drawFiber, FrameWatch fw, Duration wantedFrameTime)
+	{
+		while(!isQuitRequested && drawFiber.state != Fiber.State.TERM)
+		{
+			fiberCalled = true;
+			drawFiber.call();
+			fiberCalled = false;
+
+			draw(buf);
+			processEvents();
+
+			if (wantedFrameTime > 1.msecs)
+				fw.throttleBack(wantedFrameTime);
+		}
+	}
+
+	@trusted void drawWithFunc(FrameBuf buf, void delegate() drawFunc, FrameWatch fw, Duration wantedFrameTime)
+	{
+		drawFunc();
+		draw(buf);
+		processEvents();
+
+		if (wantedFrameTime > 1.msecs)
+			fw.throttleBack(wantedFrameTime);
+	}
+
 	@property bool isQuitRequested()
 	{
+		processEvents();
 		return sdl2.keyboard().isPressed(SDLK_ESCAPE) ||
 			sdl2.wasQuitRequested();
 	}
@@ -98,17 +126,20 @@ class SdlGui
 		return result;
 	}
 
-	Point getPoint()
+	Point getPoint(string msg = null)
 	{
+		if (msg)
+			setTitle(msg);
+
 		cast(void)getMousePosition(false);
 
 		return getMousePosition(true);
 	}
 
-	Line getLine()
+	Line getLine(string msg1, string msg2)
 	{
-		auto start = getPoint();
-		auto end = getPoint();
+		auto start = getPoint(msg1);
+		auto end = getPoint(msg2);
 
 		return Line(start, end);
 	}
@@ -123,8 +154,11 @@ class SdlGui
 		sdl2.close();
 	}
 
-	void draw(Image)(auto ref Image buf) if (isView!Image)
-	{		
+	void draw(FrameBuf buf)
+	{
+		if (fiberCalled)
+			return;
+
 		uint[] pixels = (cast(uint*)surface.pixels)[0 .. width * height];
 		auto img = buf.img;
 		auto pixelWidth = buf.metrics.pixelSize.x;

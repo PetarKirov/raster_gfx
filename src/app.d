@@ -2,187 +2,215 @@
 import std.datetime;
 import std.stdio;
 
-import primitives, frame_buf, sdl_gui, raster;
-
-struct FrameWatch
-{
-	@trusted:
-
-	private StopWatch sw;
-
-	void start() { sw.start(); }
-
-	void throttleBack(Duration frameTime)
-	{
-		auto timeLeft = frameTime - sw.peek();
-		sw.reset();
-
-		if (timeLeft > 1.msecs)
-			Thread.sleep(timeLeft);
-	}
-}
+import primitives, raster_methods;
+import frame_buf, frame_watch, sdl_gui;
 
 @safe @property
 Duration fps(long x) { return (1000 / x).msecs; }
+
+alias DrawFunc = void function(FrameBuf img, SdlGui gui);
 
 void main()
 {
 	uint w = 640, h = 480;
 	uint ps = 3; // pixel size
-	auto gui = new SdlGui(w, h, "Task 1");
-
-	FrameBuf image;
-
-	if (ps > 1)
-		image = new FrameBuf(w / ps, h / ps, ps, ps);
-	else if (ps == 1)
-		image = new FrameBuf(w, h);
-	
 	auto fw = FrameWatch();
-	fw.start();
-	fw.throttleBack(500.msecs);
-
-	@trusted void drawWithFiber(Fiber drawFiber, Duration wantedFrameTime)
-	{
-		while(!gui.isQuitRequested && drawFiber.state != Fiber.State.TERM)
-		{
-			drawFiber.call();
-			gui.draw(image);
-			gui.processEvents();
-
-			if (wantedFrameTime > 1.msecs)
-				fw.throttleBack(wantedFrameTime);
-		}
-	}
-
-	@trusted void drawWithFunc(void delegate() drawFunc, Duration wantedFrameTime)
-	{
-		while(!gui.isQuitRequested)
-		{
-			drawFunc();
-			gui.draw(image);
-			gui.processEvents();
-
-			if (wantedFrameTime > 1.msecs)
-				fw.throttleBack(wantedFrameTime);
-		}
-	}
-
-	@trusted Fiber fiber(void function(FrameBuf, SdlGui) func, size_t fiberStackSize = 64 * 1024 * 1024)
+	auto gui = new SdlGui(w, h, "Task 1");
+	auto image = new FrameBuf(w, h, ps, ps);
+	
+	@trusted Fiber fiber(DrawFunc func, size_t fiberStackSize = 64 * 1024 * 1024)
 	{
 		return new Fiber({ func(image, gui); }, fiberStackSize);
 	}
 
-	//drawWithFiber(fiber(&drawFastStuff), 60.fps);
-	//
-	//drawWithFiber(fiber(&drawSlowStuff), 0.msecs);
+	@trusted void drawWithFiber(DrawFunc func, Duration frameTime)
+	{
+		gui.drawWithFiber(image, fiber(func), fw, frameTime);
+	}
 
-	drawWithFiber(fiber(&task_rect), 60.fps);
+	@trusted void drawWithFunc(DrawFunc func, Duration frameTime)
+	{
+		gui.drawWithFunc(image, { func(image, gui); }, fw, frameTime);
+	}
+
+	fw.start();
+	fw.throttleBack(500.msecs);
+
+	//drawWithFunc(&task2_var2_no_overlay, 0.msecs);
+	drawWithFiber(&task_fill_quadrangle, 60.fps);
 
 	gui.waitForExit();
 }
 
 void task1_var2(FrameBuf img, SdlGui gui)
 {
-	Line line;
-
-	while(true)
+	Line getLine()
 	{
-		line = Line(gui.getLine(), img.metrics);
+		return Line(gui.getLine("Click somewhere to set the starting point", "Click elsewhere to set the end point"), img.metrics);
+	}
+
+	while(!gui.isQuitRequested)
+	{
+		Line line = getLine();
+		img.drawBresenhamLine(line.start, line.end, Color.Orange);
+		img.drawBresenhamLine_FromEndToEnd(line.start, line.end, Color.Blue, Color.Pink);
+
+		gui.draw(img);
+	}
+}
+
+void task1_var2_no_overlay(FrameBuf img, SdlGui gui)
+{
+	Line getLine()
+	{
+		return Line(gui.getLine("1: Click somewhere to set the starting point", "2: Click elsewhere to set the end point"), img.metrics);
+	}
+
+	while(!gui.isQuitRequested)
+	{
+		Line line = getLine();
 		img.drawBresenhamLine(line.start, line.end, Color.Orange);
 
-		//line = Line(gui.getLine(), img.metrics);
+		gui.draw(img);
+
+		line = getLine();
 		img.drawBresenhamLine_FromEndToEnd(line.start, line.end, Color.Blue, Color.Pink);
+
+		gui.draw(img);
 	}
 }
 
 void task2_var2(FrameBuf img, SdlGui gui)
 {
-	while(true)
+	Point getPoint(string msg)
 	{
-		Point center = Point(gui.getPoint(), img.metrics);
-		Point end = Point(gui.getPoint(), img.metrics);
+		return Point(gui.getPoint(msg), img.metrics);
+	}
+
+	while(!gui.isQuitRequested)
+	{
+		Point center = getPoint("1: Click somewhere to set the center of the circle");
+		Point end = getPoint("2: Click elsewhere to set the radius of the circle");
 		int r = center.distanceTo(end);
 
 		img.DrawBresenhamCircle(center, r, Color.CornflowerBlue);
 		img.DrawMichenerCircle(center, r, Color.Brown);
+
+		gui.draw(img);
 	}
 }
 
 void task2_var2_no_overlay(FrameBuf img, SdlGui gui)
 {
-	while(true)
+	Point getPoint(string msg)
 	{
-		Point center = Point(gui.getPoint(), img.metrics);
-		Point end = Point(gui.getPoint(), img.metrics);
+		return Point(gui.getPoint(msg), img.metrics);
+	}
+
+	while(!gui.isQuitRequested)
+	{
+		Point center = getPoint("1: Click somewhere to set the center of the Bresenham circle");
+		Point end = getPoint("2: Click elsewhere to set the radius of the Bresenham circle");
 		int r = center.distanceTo(end);
 		img.DrawBresenhamCircle(center, r, Color.CornflowerBlue);
 
-		center = Point(gui.getPoint(), img.metrics);
-		end = Point(gui.getPoint(), img.metrics);
+		gui.draw(img);
+
+		center = getPoint("1: Click somewhere to set the center of the Michener circle");
+		end = getPoint("2: Click elsewhere to set the radius of the Michener circle");
 		r = center.distanceTo(end);
 		img.DrawMichenerCircle(center, r, Color.Brown);
-	}
-}
 
-@trusted Line findCloseLine(FrameBuf img, Line l)
-{
-	return l;
+		gui.draw(img);
+	}
 }
 
 void task3_var3(FrameBuf img, SdlGui gui)
 {
-	// Get center and radius for 4 circles
-	foreach (_; 0 .. 4)
-	{
-		Line radius = Line(gui.getLine(), img.metrics);
+	import std.string : format;
 
-		img.DrawBresenhamCircle(radius.start, radius.start.distanceTo(radius.end), Color.CornflowerBlue);
+	Point getPoint(string msg)
+	{
+		return Point(gui.getPoint(msg), img.metrics);
 	}
 
-	while (true)
+	// Get center and radius for 4 circles
+	foreach (i; 0 .. 4)
 	{
-		Point p = Point(gui.getPoint(), img.metrics);
+		Point center = getPoint(format("(%s/5)|(1/2) Click somewhere to set the center of the Bresenham circle", i + 1));
+		Point end = getPoint(format("(%s/5)|(2/2) Click elsewhere to set the radius of the Bresenham circle", i + 1));
+		img.DrawBresenhamCircle(center, center.distanceTo(end), Color.CornflowerBlue);
 
+		gui.draw(img);
+	}
+
+	// Fill stuff till program quit
+	while(!gui.isQuitRequested)
+	{
+		Point p = getPoint("(5/5)|(1/1) Click somewhere in the area between the circles to fill it");
 		img.SimpleBoundryFill_4(p, Color.Yellow, Color.CornflowerBlue);
+
+		gui.draw(img);
 	}
 }
 
-void task_rect(FrameBuf img, SdlGui gui)
+void task_fill_quadrangle(FrameBuf img, SdlGui gui)
 {
-	Point p1 = Point(gui.getPoint(), img.metrics);
-	Point p2 = Point(gui.getPoint(), img.metrics);
+	Point getPoint(string msg)
+	{
+		return Point(gui.getPoint(msg), img.metrics);
+	}
+
+	Point p1 = getPoint("Click somewhere to set the 1st vertex of the rectangle");
+	Point p2 = getPoint("Click somewhere to set the 2nd vertex of the rectangle");
 	img.drawBresenhamLine(p1, p2, Color.Blue);
+	gui.draw(img);
 
-	Point p3 = Point(gui.getPoint(), img.metrics);
+	Point p3 = getPoint("Click somewhere to set the 3rd vertex of the rectangle");
 	img.drawBresenhamLine(p2, p3, Color.Blue);
+	gui.draw(img);
 
-	Point p4 = Point(gui.getPoint(), img.metrics);
+	Point p4 = getPoint("Click somewhere to set the 4th vertex of the rectangle");
 	img.drawBresenhamLine(p3, p4, Color.Blue);
+	gui.draw(img);
 	
 	img.drawBresenhamLine(p4, p1, Color.Blue);
+	gui.draw(img);
 
-	Point centerFill = Point(gui.getPoint(), img.metrics);
+	Point centerFill = getPoint("Click somewhere inside the quadrangle to fill it");
 	img.SimpleBoundryFill_4(centerFill, Color.Red, Color.Blue);
+	gui.draw(img);
+
+	gui.setTitle("Done");
 }
 
-
-void drawFastStuff(FrameBuf img, SdlGui gui) @safe
+void drawFastStuff(FrameBuf img, SdlGui gui)
 {
 	//img.drawGradient();
-	
-	//img.drawBresenhamLine(Point(50, 30, img.metrics), Point(320, 100, img.metrics), Color.Orange);
-	//img.drawBresenhamLine(Point(50, 40, img.metrics), Point(620, 200, img.metrics), Color.Purple);
-	//img.drawBresenhamLine(Point(50, 50, img.metrics), Point(500, 300, img.metrics), Color.Orange);
-	//img.drawBresenhamLine(Point(50, 50, img.metrics), Point(400, 400, img.metrics), Color.White);
-	//img.drawBresenhamLine(Point(50, 60, img.metrics), Point(320, 450, img.metrics), Color.Pink);
+
+	Point p1 = Point(50, 30, img.metrics);
+	Point p2 = Point(620, 100, img.metrics);
+	img.drawBresenhamLine(p1, p2, Color.Orange);
+
+	p1 = Point(50, 40, img.metrics);
+	p2 = Point(500, 200, img.metrics);
+	img.drawBresenhamLine(p1, p2, Color.Orange);
+
+	p1 = Point(50, 50, img.metrics);
+	p2 = Point(400, 300, img.metrics);
+	img.drawBresenhamLine(p1, p2, Color.Orange);
+
+	p1 = Point(50, 60, img.metrics);
+	p2 = Point(320, 450, img.metrics);
+	img.drawBresenhamLine(p1, p2, Color.Orange);
 	
 	assert(img.metrics.pixelSize.x == img.metrics.pixelSize.y, "Pixels should be square");
-	//img.DrawBresenhamCircle(Point(150, 150, img.metrics), 100 / img.metrics.pixelSize.x, Color.CornflowerBlue);
+	Point c = Point(150, 150, img.metrics);
+	img.DrawBresenhamCircle(c, 100 / img.metrics.pixelSize.x, Color.CornflowerBlue);
 }
 
-void drawSlowStuff(FrameBuf img, SdlGui gui) @safe
+void drawSlowStuff(FrameBuf img, SdlGui gui)
 {
-	//img.SimpleFloodFill_4(Point(200, 300, img.metrics), Color.Yellow, Color.Black);
+	Point p = Point(200, 300, img.metrics);
+	img.SimpleFloodFill_4(p, Color.Yellow, Color.Black);
 }
-

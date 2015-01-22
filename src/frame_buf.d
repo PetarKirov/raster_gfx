@@ -19,10 +19,10 @@ class FrameBuf
 
 	ref Color opIndex(uint x, uint y) { return img[x, y]; }
 
-	this(uint imageWidth, uint imageHeight, uint pixelWidth = 1, uint pixelHeight = 1)
+	this(uint screenWidth, uint screenHeight, uint pixelWidth = 1, uint pixelHeight = 1)
 	{
-		this.img.size(imageWidth, imageHeight);
-		this.metrics_ = Metrics(Size(imageWidth, imageHeight),
+		this.img.size(screenWidth / pixelWidth, screenHeight / pixelHeight);
+		this.metrics_ = Metrics(Size(img.w, img.h),
 							   Size(pixelWidth, pixelHeight));
 	}
 }

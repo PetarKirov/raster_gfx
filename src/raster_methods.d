@@ -1,4 +1,4 @@
-module raster;
+module raster_methods;
 
 import core.thread : Fiber;
 import std.algorithm : swap;
@@ -6,7 +6,7 @@ import std.math : abs;
 
 import frame_buf, primitives;
 
-@trusted:
+private @system:
 
 void yieldIfOnFiber()
 {
@@ -14,7 +14,7 @@ void yieldIfOnFiber()
 		Fiber.yield();
 }
 
-void each(Range, F)(Range range, F func)
+void each(R, F)(R range, F func)
 {
 	foreach (elem; range)
 		func(elem);
@@ -26,7 +26,7 @@ void PutPixel(FrameBuf img, Point p, Color color)
 		img[p.x, p.y] = color;
 }
 
-@trusted void PutPixel(FrameBuf img, uint x, uint y, Color color)
+void PutPixel(FrameBuf img, uint x, uint y, Color color)
 {
 	PutPixel(img, Point(x, y), color);
 }
@@ -41,7 +41,7 @@ Color GetPixel(FrameBuf img, const ref Point p)
 	return img.GetPixel(p.x, p.y);
 }
 
-private void FourSymmetric(FrameBuf img, Point c, Point d, Color color)
+void FourSymmetric(FrameBuf img, Point c, Point d, Color color)
 {
 	img.PutPixel(c.x + d.x, c.y + d.y, color);
 	img.PutPixel(c.x - d.x, c.y - d.y, color);
@@ -49,38 +49,46 @@ private void FourSymmetric(FrameBuf img, Point c, Point d, Color color)
 	img.PutPixel(c.x + d.x, c.y - d.y, color);
 }
 
-private void EightSymmetric(FrameBuf img, Point c, Point d, Color color)
+void EightSymmetric(FrameBuf img, Point c, Point d, Color color)
 {
 	img.FourSymmetric(c, d, color);
 	img.FourSymmetric(c, d.swap(), color);
 }
 
+public @trusted:
+
 void DrawBresenhamCircle(FrameBuf img, const ref Point c, uint R, Color color)
 {
+	if (R == 0)
+		return;
+
 	int x = 0, y = R, d = 2 - 2*R;
-	
+
 	img.PutPixel(    c.x,  c.y + R, color);
 	img.PutPixel(	 c.x,  c.y - R, color);
 	img.PutPixel(c.x + R,      c.y, color);
 	img.PutPixel(c.x - R,      c.y, color);
-	
+
 	while (true) {
 		if (d > -y) { y--; d += 1 - 2 * y; }
 		if (d <= x) { x++; d += 1 + 2 * x; }
 		if (!y) return;
-		
+
 		Point p = Point(x, y);
 		img.FourSymmetric(c, p, color);
-		
+
 		yieldIfOnFiber();
 	}
 }
 
 void DrawMichenerCircle(FrameBuf img, const ref Point c, uint R, Color color)
 {
+	if (R == 0)
+		return;
+
 	const int xc = c.x;
 	const int yc = c.y;
-	
+
 	int y = R;
 	int d = 3 - 2 * R;
 
@@ -98,8 +106,7 @@ void DrawMichenerCircle(FrameBuf img, const ref Point c, uint R, Color color)
 	}
 }
 
-
-alias Predicate = bool function(Color current, Color c1, Color c2);
+private alias Predicate = bool function(Color current, Color c1, Color c2);
 
 private void fill_impl(FrameBuf img, Point p, Color newC, Color otherC, Predicate func)
 {
@@ -121,11 +128,10 @@ private void fill_impl(FrameBuf img, Point p, Color newC, Color otherC, Predicat
 	}
 }
 
-
 void SimpleFloodFill_4(FrameBuf img, const ref Point p, Color newValue, Color oldValue)
 {
 	img.fill_impl(p, newValue, oldValue,
-				  (curC, oldC, newC) => curC != oldC);
+				  (curC, newC, innerC) => curC == innerC);
 }
 
 void SimpleBoundryFill_4(FrameBuf img, const ref Point p, Color newValue, Color borderValue)
@@ -143,49 +149,44 @@ void drawBresenhamLine(FrameBuf img, const ref Point p1, const ref Point p2, Col
 	int x1 = p1.x, y1 = p1.y;
 	int x2 = p2.x, y2 = p2.y;
 
-	// Bresenham's line algorithm
-	const bool steep = (abs(y2 - y1) > abs(x2 - x1));
-	if(steep)
-	{
+    int dx = abs(x2 - x1);
+    int dy = abs(y2 - y1);
+
+	bool reverse = dx < dy;
+
+    if (reverse)
+    {
 		swap(x1, y1);
 		swap(x2, y2);
-	}
+		swap(dx, dy);
+    }
+    int incUP = -2 * dx +2 * dy;
+    int incDN = 2 * dy;
 
-	if(x1 > x2)
-	{
-		swap(x1, x2);
-		swap(y1, y2);
-	}
-
-	const float dx = x2 - x1;
-	const float dy = abs(y2 - y1);
-
-	float error = dx / 2.0f;
-	const int ystep = (y1 < y2) ? 1 : -1;
-	int y = y1;
-
-	const int maxX = x2;
-
-	for(int x = x1; x < maxX; x++)
-	{
-		if(steep)
-		{
+    int incX = (x1 <= x2)? 1 : -1;
+    int incY = (y1 <= y2)? 1 : -1;
+    int d = -dx + 2 * dy;
+    int x = x1;
+    int y = y1;
+    int n = dx + 1;
+    while (n--)
+    {
+        if(reverse)
 			img.PutPixel(y, x, color);
-		}
-		else
-		{
-			img.PutPixel(x, y, color);
-		}
+        else
+           img.PutPixel(x, y, color);
 
 		yieldIfOnFiber();
 
-		error -= dy;
-		if(error < 0)
-		{
-			y += ystep;
-			error += dx;
-		}
-	}
+        x += incX;
+        if (d > 0)
+        {
+            d += incUP;
+            y += incY;
+        }
+        else
+            d += incDN;
+    }
 }
 
 void drawBresenhamLine_FromEndToEnd(FrameBuf img, const ref Point p1, const ref Point p2, Color color1, Color color2)
@@ -223,7 +224,7 @@ void drawBresenhamLine_FromEndToEnd(FrameBuf img, const ref Point p1, const ref 
     {
         if (reverse)
         {
-            img.PutPixel(y ,x, color1);
+            img.PutPixel(y, x, color1);
             img.PutPixel(y_krai, x_krai, color2);
         }
         else
