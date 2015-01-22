@@ -36,10 +36,52 @@ void main()
 	fw.start();
 	fw.throttleBack(500.msecs);
 
-	//drawWithFunc(&task2_var2_no_overlay, 0.msecs);
-	drawWithFiber(&task_fill_quadrangle, 60.fps);
+	//drawWithFunc(&drawFastStuff, 60.fps);
+	drawWithFiber(&task_fill_quadrangle, 0.msecs);
 
 	gui.waitForExit();
+}
+
+void task1_var3(FrameBuf img, SdlGui gui)
+{
+	Line getLine()
+	{
+		return Line(gui.getLine("Click somewhere to set the starting point", "Click elsewhere to set the end point"), img.metrics);
+	}
+
+	while(!gui.isQuitRequested)
+	{
+		Line line = getLine();
+		img.drawBresenhamLine(line.start, line.end, Color.Orange);
+		img.drawBresenhamLine!((img, color, point) =>
+							   PutPixels(img, color, [point.up(), point.down(), point.left(), point.right(),
+							   point.upLeft(), point.upRight(), point.downLeft(), point.downRight()]))
+			(line.start, line.end, Color.CornflowerBlue);
+
+		gui.draw(img);
+	}
+}
+
+void task2_var3(FrameBuf img, SdlGui gui)
+{
+	Point getPoint(string msg)
+	{
+		return Point(gui.getPoint(msg), img.metrics);
+	}
+
+	while(!gui.isQuitRequested)
+	{
+		Point center = getPoint("1: Click somewhere to set the center of the circle");
+		Point end = getPoint("2: Click elsewhere to set the radius of the circle");
+		int r = center.distanceTo(end);
+		img.DrawBresenhamCircle(center, r, Color.CornflowerBlue);
+		img.DrawBresenhamCircle!((img, color, point) =>
+								 PutPixels(img, color, [point.up(), point.down(), point.left(), point.right(),
+								 point.upLeft(), point.upRight(), point.downLeft(), point.downRight()]))
+			(center, r, Color.CornflowerBlue);
+
+		gui.draw(img);
+	}
 }
 
 void task1_var2(FrameBuf img, SdlGui gui)
@@ -177,9 +219,12 @@ void task_fill_quadrangle(FrameBuf img, SdlGui gui)
 	img.drawBresenhamLine(p4, p1, Color.Blue);
 	gui.draw(img);
 
-	Point centerFill = getPoint("Click somewhere inside the quadrangle to fill it");
-	img.SimpleBoundryFill_4(centerFill, Color.Red, Color.Blue);
-	gui.draw(img);
+	while(!gui.isQuitRequested)
+	{
+		Point centerFill = getPoint("Click somewhere inside the quadrangle to fill it");
+		img.SimpleFloodFill_4(centerFill, Color.Red, Color.Black);
+		gui.draw(img);
+	}
 
 	gui.setTitle("Done");
 }

@@ -38,15 +38,6 @@ struct Point
 	{
 	}
 
-	@property Point left() inout { return Point(x - 1, y); }
-	@property Point right() inout { return Point(x + 1, y); }
-	@property Point up() inout { return Point(x, y - 1); }
-	@property Point down() inout { return Point(x, y + 1); }
-	@property Point swap() inout
-	{
-		return Point(y, x);
-	}
-
 	@safe:
 
 	this(uint x, uint y, const ref Metrics metrics)
@@ -91,6 +82,18 @@ struct Line
 		this(l.start, l.end, metrics);
 	}
 }
+
+Point up(Point p) { return Point(p.x, p.y - 1); }
+Point down(Point p) { return Point(p.x, p.y + 1); }
+Point left(Point p) { return Point(p.x - 1, p.y); }
+Point right(Point p) { return Point(p.x + 1, p.y); }
+
+Point upLeft(Point p) { return Point(p.x - 1, p.y - 1); }
+Point upRight(Point p) { return Point(p.x + 1, p.y - 1); }
+Point downLeft(Point p) { return Point(p.x - 1, p.y + 1); }
+Point downRight(Point p) { return Point(p.x + 1, p.y + 1); }
+Point swap(Point p) { return Point(p.y, p.x); }
+
 
 @safe bool inRange(const ref Size screenSize, const ref Point p)
 {

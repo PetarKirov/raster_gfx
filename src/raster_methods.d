@@ -1,7 +1,6 @@
 module raster_methods;
 
 import core.thread : Fiber;
-import std.algorithm : swap;
 import std.math : abs;
 
 import frame_buf, primitives;
@@ -20,7 +19,7 @@ void each(R, F)(R range, F func)
 		func(elem);
 }
 
-void PutPixel(FrameBuf img, Point p, Color color)
+void PutPixel(FrameBuf img, Color color, Point p)
 {
 	if (img.metrics.screenSize.inRange(p))
 		img[p.x, p.y] = color;
@@ -28,7 +27,13 @@ void PutPixel(FrameBuf img, Point p, Color color)
 
 void PutPixel(FrameBuf img, uint x, uint y, Color color)
 {
-	PutPixel(img, Point(x, y), color);
+	PutPixel(img, color, Point(x, y));
+}
+
+public void PutPixels(FrameBuf img, Color color, Point[] points)
+{
+	foreach (p; points)
+		img.PutPixel(p.x, p.y, color);
 }
 
 Color GetPixel(FrameBuf img, uint x, uint y)
@@ -41,23 +46,23 @@ Color GetPixel(FrameBuf img, const ref Point p)
 	return img.GetPixel(p.x, p.y);
 }
 
-void FourSymmetric(FrameBuf img, Point c, Point d, Color color)
+void FourSymmetric(alias drawFunc = PutPixel)(FrameBuf img, Point c, Point d, Color color)
 {
-	img.PutPixel(c.x + d.x, c.y + d.y, color);
-	img.PutPixel(c.x - d.x, c.y - d.y, color);
-	img.PutPixel(c.x - d.x, c.y + d.y, color);
-	img.PutPixel(c.x + d.x, c.y - d.y, color);
+	drawFunc(img, color, Point(c.x + d.x, c.y + d.y));
+	drawFunc(img, color, Point(c.x - d.x, c.y - d.y));
+	drawFunc(img, color, Point(c.x - d.x, c.y + d.y));
+	drawFunc(img, color, Point(c.x + d.x, c.y - d.y));
 }
 
-void EightSymmetric(FrameBuf img, Point c, Point d, Color color)
+void EightSymmetric(alias drawFunc = PutPixel)(FrameBuf img, Point c, Point d, Color color)
 {
-	img.FourSymmetric(c, d, color);
-	img.FourSymmetric(c, d.swap(), color);
+	img.FourSymmetric!drawFunc(c, d, color);
+	img.FourSymmetric!drawFunc(c, d.swap(), color);
 }
 
 public @trusted:
 
-void DrawBresenhamCircle(FrameBuf img, const ref Point c, uint R, Color color)
+void DrawBresenhamCircle(alias drawFunc = PutPixel)(FrameBuf img, const ref Point c, uint R, Color color)
 {
 	if (R == 0)
 		return;
@@ -75,7 +80,7 @@ void DrawBresenhamCircle(FrameBuf img, const ref Point c, uint R, Color color)
 		if (!y) return;
 
 		Point p = Point(x, y);
-		img.FourSymmetric(c, p, color);
+		img.FourSymmetric!drawFunc(c, p, color);
 
 		yieldIfOnFiber();
 	}
@@ -108,40 +113,55 @@ void DrawMichenerCircle(FrameBuf img, const ref Point c, uint R, Color color)
 
 private alias Predicate = bool function(Color current, Color c1, Color c2);
 
-private void fill_impl(FrameBuf img, Point p, Color newC, Color otherC, Predicate func)
+import std.algorithm : map, equal, filter;
+import std.array : array;
+
+private void fill_impl(alias pred, alias drawFunc = PutPixels, Args...)
+		(FrameBuf img, Point[] points, Color newC, Color otherC, Args funcs)
 {
-	if (!img.metrics.screenSize.inRange(p))
+	Point center = points[0];
+
+	auto remaining = points.filter!( x => img.metrics.screenSize.inRange(x) &&
+					 pred(img.GetPixel(x), newC, otherC)).array;
+
+	if (remaining.length == 0)
 		return;
 
-	auto currentC = img.GetPixel(p);
+	drawFunc(img, newC, points);
 
-	if (func(currentC, newC, otherC))
+	yieldIfOnFiber();
+
+	foreach (func; funcs)
 	{
-		img.PutPixel(p, newC);
+		Point[] newP2;
+		remaining.each((ref Point x) { newP2 ~= func(x); });
 
-		yieldIfOnFiber();
-
-		img.fill_impl(p.left(), newC, otherC, func);
-		img.fill_impl(p.right(), newC, otherC, func);
-		img.fill_impl(p.up(), newC, otherC, func);
-		img.fill_impl(p.down(), newC, otherC, func);
+		img.fill_impl!pred(newP2, newC, otherC, funcs);
 	}
 }
 
 void SimpleFloodFill_4(FrameBuf img, const ref Point p, Color newValue, Color oldValue)
 {
-	img.fill_impl(p, newValue, oldValue,
-				  (curC, newC, innerC) => curC == innerC);
+	img.fill_impl!((curC, newC, innerC) => curC == innerC)
+				  ([p], newValue, oldValue, &left, &right, &up, &down);
+}
+
+void SimpleFloodFill_8(FrameBuf img, const ref Point p, Color newValue, Color oldValue)
+{
+	auto points = [p, p.up(), p.down(), p.left(), p.right(),
+		p.upLeft(), p.upRight(), p.downLeft(), p.downRight()];
+
+	img.fill_impl!((curC, newC, innerC) => curC == innerC)
+		(points, newValue, oldValue, &left, &right, &up, &down, &upLeft, &upRight, &downLeft, &downRight);
 }
 
 void SimpleBoundryFill_4(FrameBuf img, const ref Point p, Color newValue, Color borderValue)
 {
-	img.fill_impl(p, newValue, borderValue,
-		(curC, newC, borderC) =>
-			curC != newC && curC != borderC);
+	img.fill_impl!((curC, newC, borderC) => curC != newC && curC != borderC)
+				  ([p], newValue, borderValue, &left, &right, &up, &down);
 }
 
-void drawBresenhamLine(FrameBuf img, const ref Point p1, const ref Point p2, Color color)
+void drawBresenhamLine(alias drawFunc = PutPixel)(FrameBuf img, const ref Point p1, const ref Point p2, Color color)
 {
 	import std.math : abs;
 	import std.algorithm : swap;
@@ -172,9 +192,9 @@ void drawBresenhamLine(FrameBuf img, const ref Point p1, const ref Point p2, Col
     while (n--)
     {
         if(reverse)
-			img.PutPixel(y, x, color);
+			drawFunc(img, color, Point(y, x));
         else
-           img.PutPixel(x, y, color);
+           drawFunc(img, color, Point(x, y));
 
 		yieldIfOnFiber();
 
@@ -189,9 +209,9 @@ void drawBresenhamLine(FrameBuf img, const ref Point p1, const ref Point p2, Col
     }
 }
 
-void drawBresenhamLine_FromEndToEnd(FrameBuf img, const ref Point p1, const ref Point p2, Color color1, Color color2)
+void drawBresenhamLine_FromEndToEnd(alias drawFunc = PutPixel)(FrameBuf img, const ref Point p1, const ref Point p2, Color color1, Color color2)
 {
-   // int x , y , dx, dy, incX, incY, d,  incUP , incDN, n , reverse, x_krai,y_krai;
+	import std.algorithm : swap;
 
 	int x1 = p1.x, y1 = p1.y;
 	int x2 = p2.x, y2 = p2.y;
@@ -224,13 +244,13 @@ void drawBresenhamLine_FromEndToEnd(FrameBuf img, const ref Point p1, const ref 
     {
         if (reverse)
         {
-            img.PutPixel(y, x, color1);
-            img.PutPixel(y_krai, x_krai, color2);
+			drawFunc(img, color1, Point(y, x));
+			drawFunc(img, color2, Point(y_krai, x_krai));
         }
         else
         {
-			img.PutPixel(x, y, color1);
-			img.PutPixel(x_krai, y_krai, color2);
+			drawFunc(img, color1, Point(x, y));
+			drawFunc(img, color2, Point(x_krai, y_krai));
         }
 
 		yieldIfOnFiber();
