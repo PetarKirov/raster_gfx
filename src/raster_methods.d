@@ -161,6 +161,11 @@ void SimpleBoundryFill_4(FrameBuf img, const ref Point p, Color newValue, Color 
 				  ([p], newValue, borderValue, &left, &right, &up, &down);
 }
 
+void drawBresenhamLine(alias drawFunc = PutPixel)(FrameBuf img, const ref Line l, Color color)
+{
+	img.drawBresenhamLine!drawFunc(l.start, l.end, color);
+}
+
 void drawBresenhamLine(alias drawFunc = PutPixel)(FrameBuf img, const ref Point p1, const ref Point p2, Color color)
 {
 	import std.math : abs;
@@ -269,6 +274,117 @@ void drawBresenhamLine_FromEndToEnd(alias drawFunc = PutPixel)(FrameBuf img, con
     }
 
 }
+
+enum { TOP = 0x1, BOTTOM = 0x2, RIGHT = 0x4, LEFT = 0x8 }
+
+alias Outcode = int;
+
+Outcode ComputeOutcode(int x, int y, int xmin, int ymin, int xmax, int ymax)
+{
+    Outcode oc = 0;
+    if (y > ymax)
+        oc |= TOP;
+    else if (y < ymin)
+        oc |= BOTTOM;
+    if (x > xmax)
+        oc |= RIGHT;
+    else if (x < xmin)
+        oc |= LEFT;
+    return oc;
+}
+
+void CohenSuttherland(FrameBuf img, Line l, Rectangle boundingBox, Color color)
+{
+	int x1 = l.start.x, y1 = l.start.y;
+	int x2 =   l.end.x,	y2 =   l.end.y;
+
+	int xmin = boundingBox.min.x, ymin = boundingBox.min.y;
+	int xmax = boundingBox.max.x, ymax = boundingBox.max.y;
+
+    int accept = false;
+    bool done = false;
+
+    Outcode outcode1 = ComputeOutcode(x1, y1, xmin, ymin, xmax, ymax);
+    Outcode outcode2 = ComputeOutcode(x2, y2, xmin, ymin, xmax, ymax);
+
+    do
+    {
+        if (outcode1 == 0 && outcode2 == 0)
+        {
+            accept = true;
+            done = true;
+        }
+        else if (outcode1 & outcode2)
+        {
+            done = true;
+        }
+        else
+        {
+            int x, y;
+            Outcode outcode_ex = outcode1 ? outcode1 : outcode2;
+            if (outcode_ex & TOP)
+            {
+                x = x1 + (x2 - x1) * (ymax - y1) / (y2 - y1);
+                y = ymax;
+            }
+
+            else if (outcode_ex & BOTTOM)
+            {
+                x = x1 + (x2 - x1) * (ymin - y1) / (y2 - y1);
+                y = ymin;
+            }
+            else if (outcode_ex & RIGHT)
+            {
+                y = y1 + (y2 - y1) * (xmax - x1) / (x2 - x1);
+                x = xmax;
+            }
+            else
+            {
+                y = y1 + (y2 - y1) * (xmin - x1) / (x2 - x1);
+                x = xmin;
+            }
+            if (outcode_ex == outcode1)
+            {
+                x1 = x;
+                y1 = y;
+                outcode1 = ComputeOutcode(x1, y1, xmin, ymin, xmax, ymax);
+            }
+            else
+            {
+                x2 = x;
+                y2 = y;
+                outcode2 = ComputeOutcode(x2, y2, xmin, ymin, xmax, ymax);
+            }
+        }
+    } while (!done);
+
+    if (accept == true)
+	{
+		Point p1 = Point(x1, y1), p2 = Point(x2, y2);
+        img.drawBresenhamLine(p1, p2, color);
+	}
+}
+
+void DrawRectangle(FrameBuf img, const ref Point p1, const ref Point p2, Color color)
+{
+	Line v1 = Line(p1.x, p1.y, p1.x, p2.y);
+	Line v2 = Line(p2.x, p1.y, p2.x, p2.y);
+	Line h1 = Line(p1.x, p1.y, p2.x, p1.y);
+	Line h2 = Line(p1.x, p2.y, p2.x, p2.y);
+
+	img.drawBresenhamLine(v1, color);
+	yieldIfOnFiber();
+
+	img.drawBresenhamLine(v2, color);
+	yieldIfOnFiber();
+
+	img.drawBresenhamLine(h1, color);
+	yieldIfOnFiber();
+
+	img.drawBresenhamLine(h2, color);
+	yieldIfOnFiber();
+}
+
 
 void drawGradient(FrameBuf img)
 {

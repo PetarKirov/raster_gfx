@@ -37,7 +37,7 @@ void main()
 	fw.throttleBack(500.msecs);
 
 	//drawWithFunc(&drawFastStuff, 60.fps);
-	drawWithFiber(&task_fill_quadrangle, 0.msecs);
+	drawWithFiber(&task4_var3, 0.msecs);
 
 	gui.waitForExit();
 }
@@ -194,6 +194,21 @@ void task3_var3(FrameBuf img, SdlGui gui)
 
 		gui.draw(img);
 	}
+}
+
+void task4_var3(FrameBuf img, SdlGui gui)
+{
+	Point p1 = Point(50, 50), p2 = Point(250, 250);
+	Rectangle boundingRect = Rectangle(p1, p2, img.metrics);
+
+    img.DrawRectangle(boundingRect.min, boundingRect.max, Color.White);
+
+	Line l = Line(50, 25, 250, 290, img.metrics);
+    img.drawBresenhamLine(l, Color.White);
+
+    img.CohenSuttherland(l, boundingRect, Color.Purple);
+
+	gui.draw(img);
 }
 
 void task_fill_quadrangle(FrameBuf img, SdlGui gui)

@@ -69,7 +69,19 @@ struct Line
 		this.end = end;
 	}
 
+	this(uint x1, uint y1, uint x2, uint y2)
+	{
+		this.start = Point(x1, y1);
+		this.end = Point(x2, y2);
+	}
+
 	@trusted:
+
+	this(uint x1, uint y1, uint x2, uint y2, const ref Metrics metrics)
+	{
+		Point p1 = Point(x1, y1), p2 = Point(x2, y2);
+		this(p1, p2, metrics);
+	}
 
 	this(const ref Point start, const ref Point end, const ref Metrics metrics)
 	{
@@ -80,6 +92,26 @@ struct Line
 	this(Line l, const ref Metrics metrics)
 	{
 		this(l.start, l.end, metrics);
+	}
+}
+
+struct Rectangle
+{
+	Point min;
+	Point max;
+
+	@system:
+	this(Point min, Point max)
+	{
+		this.min = min;
+		this.max = max;
+	}
+
+	@trusted
+	this(const ref Point min, const ref Point max, const ref Metrics metrics)
+	{
+		this.min = Point(min, metrics);
+		this.max = Point(max, metrics);
 	}
 }
 
