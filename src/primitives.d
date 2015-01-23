@@ -113,6 +113,13 @@ struct Rectangle
 		this.min = Point(min, metrics);
 		this.max = Point(max, metrics);
 	}
+
+	@trusted
+	this(uint minX, uint minY, uint maxX, uint maxY, const ref Metrics metrics)
+	{
+		this.min = Point(minX, minY, metrics);
+		this.max = Point(maxX, maxY, metrics);
+	}
 }
 
 Point up(Point p) { return Point(p.x, p.y - 1); }

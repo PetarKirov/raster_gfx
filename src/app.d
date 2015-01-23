@@ -198,15 +198,13 @@ void task3_var3(FrameBuf img, SdlGui gui)
 
 void task4_var3(FrameBuf img, SdlGui gui)
 {
-	Point p1 = Point(50, 50), p2 = Point(250, 250);
-	Rectangle boundingRect = Rectangle(p1, p2, img.metrics);
+	auto bounds = Rectangle(50, 50, 250, 250, img.metrics);
+    img.DrawRectangle(bounds.min, bounds.max, Color.White);
 
-    img.DrawRectangle(boundingRect.min, boundingRect.max, Color.White);
+	auto line = Line(50, 25, 250, 290, img.metrics);
+    img.drawBresenhamLine(line, Color.White);
 
-	Line l = Line(50, 25, 250, 290, img.metrics);
-    img.drawBresenhamLine(l, Color.White);
-
-    img.CohenSuttherland(l, boundingRect, Color.Purple);
+    img.CohenSuttherland(line, bounds, Color.Purple);
 
 	gui.draw(img);
 }
