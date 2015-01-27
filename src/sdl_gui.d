@@ -195,7 +195,7 @@ class SdlGui
 			}
 		}
 		
-		texture.updateTexture(surface.pixels, surface.pitch);
+		texture.updateTexture(surface.pixels, cast(int)surface.pitch);
 		renderer.clear();
 		renderer.copy(texture, 0, 0);
 		renderer.present();
