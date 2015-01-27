@@ -1,6 +1,7 @@
-﻿import core.thread;
-import std.datetime;
+﻿import core.thread : Fiber;
+import std.datetime : msecs;
 import std.stdio;
+import std.typecons : scoped;
 
 import primitives, raster_methods;
 import frame_buf, frame_watch, sdl_gui;
@@ -15,31 +16,40 @@ void main()
 	uint w = 640, h = 480;
 	uint ps = 3; // pixel size
 	auto fw = FrameWatch();
-	auto gui = new SdlGui(w, h, "Task 1");
-	auto image = new FrameBuf(w, h, ps, ps);
-	
-	@trusted Fiber fiber(DrawFunc func, size_t fiberStackSize = 64 * 1024 * 1024)
-	{
-		return new Fiber({ func(image, gui); }, fiberStackSize);
-	}
-
-	@trusted void drawWithFiber(DrawFunc func, Duration frameTime)
-	{
-		gui.drawWithFiber(image, fiber(func), fw, frameTime);
-	}
-
-	@trusted void drawWithFunc(DrawFunc func, Duration frameTime)
-	{
-		gui.drawWithFunc(image, { func(image, gui); }, fw, frameTime);
-	}
+	auto gui = scoped!SdlGui(w, h, "Task 1");
+	auto image = scoped!FrameBuf(w, h, ps, ps);
 
 	fw.start();
 	fw.throttleBack(500.msecs);
 
-	//drawWithFunc(&drawFastStuff, 60.fps);
-	drawWithFiber(&task4_var3, 0.msecs);
+	doDraw(image, gui, fw);
 
 	gui.waitForExit();
+}
+
+void doDraw(FrameBuf image, SdlGui gui, ref FrameWatch fw)
+{
+	mixin drawFuncAdaptors;
+
+	drawWithFunc(&task4_var3, 0.msecs);
+}
+
+mixin template drawFuncAdaptors()
+{
+	@trusted Fiber fiber(DrawFunc func, size_t fiberStackSize = 64 * 1024 * 1024)
+	{
+		return new Fiber({ func(image, gui); }, fiberStackSize);
+	}
+	
+	@trusted void drawWithFiber(DrawFunc func, Duration frameTime, size_t fiberStackSize = 64 * 1024 * 1024)
+	{
+		gui.drawWithFiber(image, fiber(func, fiberStackSize), fw, frameTime);
+	}
+	
+	@trusted void drawWithFunc(DrawFunc func, Duration frameTime)
+	{
+		gui.drawWithFunc(image, { func(image, gui); }, fw, frameTime);
+	}
 }
 
 void task1_var3(FrameBuf img, SdlGui gui)
@@ -53,7 +63,7 @@ void task1_var3(FrameBuf img, SdlGui gui)
 	{
 		Line line = getLine();
 		img.drawBresenhamLine(line.start, line.end, Color.Orange);
-		img.drawBresenhamLine!((img, color, point) =>
+		img.drawBresenhamLine!((ref img, color, point) =>
 							   PutPixels(img, color, [point.up(), point.down(), point.left(), point.right(),
 							   point.upLeft(), point.upRight(), point.downLeft(), point.downRight()]))
 			(line.start, line.end, Color.CornflowerBlue);
@@ -75,7 +85,7 @@ void task2_var3(FrameBuf img, SdlGui gui)
 		Point end = getPoint("2: Click elsewhere to set the radius of the circle");
 		int r = center.distanceTo(end);
 		img.DrawBresenhamCircle(center, r, Color.CornflowerBlue);
-		img.DrawBresenhamCircle!((img, color, point) =>
+		img.DrawBresenhamCircle!((ref img, color, point) =>
 								 PutPixels(img, color, [point.up(), point.down(), point.left(), point.right(),
 								 point.upLeft(), point.upRight(), point.downLeft(), point.downRight()]))
 			(center, r, Color.CornflowerBlue);

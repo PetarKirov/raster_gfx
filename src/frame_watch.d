@@ -7,9 +7,9 @@ struct FrameWatch
 {
 @trusted:
 
-	private StopWatch sw;
+	StopWatch sw;
 
-	void start() { sw.start(); }
+	alias sw this;
 
 	void throttleBack(Duration frameTime)
 	{
@@ -18,5 +18,16 @@ struct FrameWatch
 
 		if (timeLeft > 1.msecs)
 			Thread.sleep(timeLeft);
+	}
+
+	Duration measureTime(scope void delegate() func)
+	{
+		import std.conv : to;
+
+		auto t1 = this.peek();
+		func();
+		auto t2 = this.peek();
+
+		return to!Duration(t2 - t1);
 	}
 }

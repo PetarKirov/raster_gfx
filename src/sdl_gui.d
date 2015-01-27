@@ -6,7 +6,7 @@ import std.experimental.logger;
 import gfm.sdl2;
 import primitives, frame_buf, frame_watch;
 
-//Default SDL2 GUI
+/// Use only with scoped!
 class SdlGui
 {
 @trusted:
@@ -62,7 +62,7 @@ class SdlGui
 		sdl2.processEvents();
 	}
 
-	@trusted void drawWithFiber(FrameBuf buf, Fiber drawFiber, FrameWatch fw, Duration wantedFrameTime)
+	@trusted void drawWithFiber(ref FrameBuf buf, Fiber drawFiber, ref FrameWatch fw, Duration wantedFrameTime)
 	{
 		while(!isQuitRequested && drawFiber.state != Fiber.State.TERM)
 		{
@@ -78,7 +78,7 @@ class SdlGui
 		}
 	}
 
-	@trusted void drawWithFunc(FrameBuf buf, void delegate() drawFunc, FrameWatch fw, Duration wantedFrameTime)
+	@trusted void drawWithFunc(ref FrameBuf buf, void delegate() drawFunc, ref FrameWatch fw, Duration wantedFrameTime)
 	{
 		drawFunc();
 		draw(buf);
@@ -144,25 +144,14 @@ class SdlGui
 		return Line(start, end);
 	}
 
-	void close()
-	{
-		log.log("Attempting to close SDL2 resources.");
-		texture.close();
-		surface.close();
-		renderer.close();
-		window.close();
-		sdl2.close();
-	}
-
-	void draw(FrameBuf buf)
+	void draw(ref FrameBuf img)
 	{
 		if (fiberCalled)
 			return;
 
 		uint[] pixels = (cast(uint*)surface.pixels)[0 .. width * height];
-		auto img = buf.img;
-		auto pixelWidth = buf.metrics.pixelSize.x;
-		auto pixelHeight = buf.metrics.pixelSize.y;
+		auto pixelWidth = img.metrics.pixelSize.x;
+		auto pixelHeight = img.metrics.pixelSize.y;
 
 		if (pixelWidth == 1 && pixelHeight == 1)
 		{
@@ -199,6 +188,16 @@ class SdlGui
 		renderer.clear();
 		renderer.copy(texture, 0, 0);
 		renderer.present();
+	}
+
+	void close()
+	{
+		log.log("Attempting to close SDL2 resources.");
+		texture.close();
+		surface.close();
+		renderer.close();
+		window.close();
+		sdl2.close();
 	}
 
 	~this()

@@ -7,8 +7,7 @@ public import color;
 
 class FrameBuf
 {
-	Image!Color img;
-
+	private Image!Color img_;
 	private immutable Metrics metrics_;
 
 	@trusted:
@@ -17,12 +16,15 @@ class FrameBuf
 	@property uint h() { return metrics_.screenSize.y; }
 	@property ref immutable(Metrics) metrics() { return metrics_; }
 
-	ref Color opIndex(uint x, uint y) { return img[x, y]; }
+	ref Color opIndex(uint x, uint y) { return img_[x, y]; }
+
+	Color[] pixels() { return img_.pixels; }
+	Color[] scanline(int y) { return img_.scanline(y); }
 
 	this(uint screenWidth, uint screenHeight, uint pixelWidth = 1, uint pixelHeight = 1)
 	{
-		this.img.size(screenWidth / pixelWidth, screenHeight / pixelHeight);
-		this.metrics_ = Metrics(Size(img.w, img.h),
+		this.img_.size(screenWidth / pixelWidth, screenHeight / pixelHeight);
+		this.metrics_ = Metrics(Size(img_.w, img_.h),
 							   Size(pixelWidth, pixelHeight));
 	}
 }
