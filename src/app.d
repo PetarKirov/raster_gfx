@@ -24,6 +24,7 @@ void main()
 
 	doDraw(image, gui, fw);
 
+	gui.setTitle("Press Esc to exit.");
 	gui.waitForExit();
 }
 
