@@ -3,7 +3,7 @@ module frame_watch;
 import std.datetime : Duration, StopWatch, msecs;
 import core.thread : Thread;
 
-struct FrameWatch
+class FrameWatch
 {
 @trusted:
 
