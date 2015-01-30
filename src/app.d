@@ -14,7 +14,7 @@ alias DrawFunc = void function(FrameBuf img, SdlGui gui);
 void main()
 {
 	uint w = 640, h = 480;
-	uint ps = 2; // pixel size
+	uint ps = 1; // pixel size
 	auto fw = new FrameWatch();
 	auto gui = scoped!SdlGui(w, h, "Task 1");
 	auto image = scoped!FrameBuf(w, h, ps, ps);
@@ -32,7 +32,7 @@ void doDraw(FrameBuf image, SdlGui gui, FrameWatch fw)
 	
 	import dots_and_boxes_game;
 	
-	auto game = new DotsAndBoxesGame(image, gui, fw, 5, 3, Player.blue, Player.red);
+	auto game = new DotsAndBoxesGame(image, gui, fw, 8, 4, Player.blue, Player.red);
 	game.gameLoop();
 }
 
