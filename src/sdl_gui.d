@@ -62,7 +62,7 @@ class SdlGui
 		sdl2.processEvents();
 	}
 
-	@trusted void drawWithFiber(ref FrameBuf buf, Fiber drawFiber, ref FrameWatch fw, Duration wantedFrameTime)
+	@trusted void drawWithFiber(ref FrameBuf buf, Fiber drawFiber, FrameWatch fw, Duration wantedFrameTime)
 	{
 		while(!isQuitRequested && drawFiber.state != Fiber.State.TERM)
 		{
@@ -78,7 +78,7 @@ class SdlGui
 		}
 	}
 
-	@trusted void drawWithFunc(ref FrameBuf buf, void delegate() drawFunc, ref FrameWatch fw, Duration wantedFrameTime)
+	@trusted void drawWithFunc(ref FrameBuf buf, void delegate() drawFunc, FrameWatch fw, Duration wantedFrameTime)
 	{
 		drawFunc();
 		draw(buf);
@@ -107,9 +107,9 @@ class SdlGui
 		window.setTitle(title);
 	}
 
-	Point getMousePosition(bool buttonPressed)
+	Point2 getMousePosition(bool buttonPressed)
 	{
-		Point result;
+		Point2 result;
 
 		while(!isQuitRequested)
 		{
@@ -118,7 +118,7 @@ class SdlGui
 			if (sdl2.mouse.isButtonPressed(SDL_BUTTON_LMASK) == buttonPressed)
 			{
 				auto pos = sdl2.mouse().position();
-				result = Point(pos.x, pos.y);
+				result = Point2(pos.x, pos.y);
 				break;				
 			}
 		}
@@ -126,7 +126,7 @@ class SdlGui
 		return result;
 	}
 
-	Point getPoint(string msg = null)
+	Point2 getPoint(string msg = null)
 	{
 		if (msg)
 			setTitle(msg);
@@ -136,12 +136,12 @@ class SdlGui
 		return getMousePosition(true);
 	}
 
-	Line getLine(string msg1, string msg2)
+	Line2 getLine(string msg1, string msg2)
 	{
 		auto start = getPoint(msg1);
 		auto end = getPoint(msg2);
 
-		return Line(start, end);
+		return Line2(start, end);
 	}
 
 	void draw(ref FrameBuf img)

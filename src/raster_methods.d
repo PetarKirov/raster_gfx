@@ -7,54 +7,66 @@ import frame_buf, primitives;
 
 private @system:
 
-void yieldIfOnFiber()
+private void yieldIfOnFiber()
 {
 	if (Fiber.getThis())
 		Fiber.yield();
 }
 
-void each(R, F)(R range, F func)
+private void each(R, F)(R range, F func)
 {
 	foreach (elem; range)
 		func(elem);
 }
 
-void PutPixel(FrameBuf img, Color color, Point p)
+private void PutPixel(FrameBuf img, Color color, ScreenPoint p)
 {
-	if (img.metrics.screenSize.inRange(p))
+	img.PutPixel(color, Point2(p.x, p.y));
+}
+
+private void PutPixel(FrameBuf img, Color color, Point2 p)
+{
+	if (img.metrics.inRange(p))
 		img[p.x, p.y] = color;
+
+	yieldIfOnFiber();
 }
 
-void PutPixel(FrameBuf img, uint x, uint y, Color color)
+private void PutPixel(FrameBuf img, uint x, uint y, Color color)
 {
-	PutPixel(img, color, Point(x, y));
+	if (img.metrics.inRange(x, y))
+		img[x, y] = color;
+
+	yieldIfOnFiber();
 }
 
-public void PutPixels(FrameBuf img, Color color, Point[] points)
+private void PutPixels(FrameBuf img, Color color, Point2[] points)
 {
 	foreach (p; points)
 		img.PutPixel(p.x, p.y, color);
+
+	yieldIfOnFiber();
 }
 
-Color GetPixel(FrameBuf img, uint x, uint y)
+private Color GetPixel(FrameBuf img, uint x, uint y)
 {
 	return img[x, y];
 }
 
-Color GetPixel(FrameBuf img, const ref Point p)
+private Color GetPixel(FrameBuf img, Point2 p)
 {
 	return img.GetPixel(p.x, p.y);
 }
 
-void FourSymmetric(alias drawFunc = PutPixel)(FrameBuf img, Point c, Point d, Color color)
+private void FourSymmetric(alias drawFunc = PutPixel)(FrameBuf img, Point2 c, Point2 d, Color color)
 {
-	drawFunc(img, color, Point(c.x + d.x, c.y + d.y));
-	drawFunc(img, color, Point(c.x - d.x, c.y - d.y));
-	drawFunc(img, color, Point(c.x - d.x, c.y + d.y));
-	drawFunc(img, color, Point(c.x + d.x, c.y - d.y));
+	drawFunc(img, color, Point2(c.x + d.x, c.y + d.y));
+	drawFunc(img, color, Point2(c.x - d.x, c.y - d.y));
+	drawFunc(img, color, Point2(c.x - d.x, c.y + d.y));
+	drawFunc(img, color, Point2(c.x + d.x, c.y - d.y));
 }
 
-void EightSymmetric(alias drawFunc = PutPixel)(FrameBuf img, Point c, Point d, Color color)
+private void EightSymmetric(alias drawFunc = PutPixel)(FrameBuf img, Point2 c, Point2 d, Color color)
 {
 	img.FourSymmetric!drawFunc(c, d, color);
 	img.FourSymmetric!drawFunc(c, d.swap(), color);
@@ -62,7 +74,15 @@ void EightSymmetric(alias drawFunc = PutPixel)(FrameBuf img, Point c, Point d, C
 
 public @trusted:
 
-void DrawBresenhamCircle(alias drawFunc = PutPixel)(FrameBuf img, const ref Point c, uint R, Color color)
+void drawBresenhamCircleTick(FrameBuf img, ScreenPoint c, uint r, Color color)
+{
+	img.drawBresenhamCircle!((ref img, color, point) =>
+	                         PutPixels(img, color, [point.up(), point.down(), point.left(), point.right(),
+		point.upLeft(), point.upRight(), point.downLeft(), point.downRight()]))
+		(c, r, Color.CornflowerBlue);
+}
+
+void drawBresenhamCircle(alias drawFunc = PutPixel)(FrameBuf img, ScreenPoint c, uint R, Color color)
 {
 	if (R == 0)
 		return;
@@ -79,35 +99,30 @@ void DrawBresenhamCircle(alias drawFunc = PutPixel)(FrameBuf img, const ref Poin
 		if (d <= x) { x++; d += 1 + 2 * x; }
 		if (!y) return;
 
-		Point p = Point(x, y);
+		auto p = Point2(x, y);
+		
 		img.FourSymmetric!drawFunc(c, p, color);
-
-		yieldIfOnFiber();
 	}
 }
 
-void DrawMichenerCircle(FrameBuf img, const ref Point c, uint R, Color color)
+void drawMichenerCircle(FrameBuf img, ScreenPoint c, uint R, Color color)
 {
 	if (R == 0)
 		return;
 
-	const int xc = c.x;
-	const int yc = c.y;
-
+	int xc = c.x, yc = c.y;
 	int y = R;
 	int d = 3 - 2 * R;
 
-	img.EightSymmetric(Point(xc, yc), Point(0, R), color);
+	img.EightSymmetric(Point2(xc, yc), Point2(0, R), color);
 	foreach (x; 0 .. y)
 	{
-		yieldIfOnFiber();
-
 		if (d >= 0)
 			d += 10 + 4 * x -4 * (y--);
 		else
 			d += 6 + 4 * x;
 
-		img.EightSymmetric(Point(xc, yc), Point(x, y), color);
+		img.EightSymmetric(c, Point2(x, y), color);
 	}
 }
 
@@ -117,36 +132,33 @@ import std.algorithm : map, equal, filter;
 import std.array : array;
 
 private void fill_impl(alias pred, alias drawFunc = PutPixels, Args...)
-		(FrameBuf img, Point[] points, Color newC, Color otherC, Args funcs)
+		(FrameBuf img, Point2[] points, Color newC, Color otherC, Args funcs)
 {
-	Point center = points[0];
+	auto center = points[0];
 
-	auto remaining = points.filter!( x => img.metrics.screenSize.inRange(x) &&
-					 pred(img.GetPixel(x), newC, otherC)).array;
+	auto remaining = points.filter!(x =>
+			img.metrics.inRange(x) && pred(img.GetPixel(x), newC, otherC));
 
-	if (remaining.length == 0)
+	if (remaining.empty)
 		return;
 
 	drawFunc(img, newC, points);
 
-	yieldIfOnFiber();
-
 	foreach (func; funcs)
 	{
-		Point[] newP2;
-		remaining.each((ref Point x) { newP2 ~= func(x); });
+		Point2[] newP2 = remaining.map!( x => func(x)).array;
 
 		img.fill_impl!pred(newP2, newC, otherC, funcs);
 	}
 }
 
-void SimpleFloodFill_4(FrameBuf img, const ref Point p, Color newValue, Color oldValue)
+void SimpleFloodFill_4(FrameBuf img, ScreenPoint p, Color newValue, Color oldValue)
 {
 	img.fill_impl!((curC, newC, innerC) => curC == innerC)
 				  ([p], newValue, oldValue, &left, &right, &up, &down);
 }
 
-void SimpleFloodFill_8(FrameBuf img, const ref Point p, Color newValue, Color oldValue)
+void SimpleFloodFill_8(FrameBuf img, ScreenPoint p, Color newValue, Color oldValue)
 {
 	auto points = [p, p.up(), p.down(), p.left(), p.right(),
 		p.upLeft(), p.upRight(), p.downLeft(), p.downRight()];
@@ -155,71 +167,77 @@ void SimpleFloodFill_8(FrameBuf img, const ref Point p, Color newValue, Color ol
 		(points, newValue, oldValue, &left, &right, &up, &down, &upLeft, &upRight, &downLeft, &downRight);
 }
 
-void SimpleBoundryFill_4(FrameBuf img, const ref Point p, Color newValue, Color borderValue)
+void SimpleBoundryFill_4(FrameBuf img, ScreenPoint p, Color newValue, Color borderValue)
 {
 	img.fill_impl!((curC, newC, borderC) => curC != newC && curC != borderC)
 				  ([p], newValue, borderValue, &left, &right, &up, &down);
 }
 
-void drawBresenhamLine(alias drawFunc = PutPixel)(FrameBuf img, const ref Line l, Color color)
+void drawBresenhamLineTick(FrameBuf img, ScreenLine line, Color color)
 {
-	img.drawBresenhamLine!drawFunc(l.start, l.end, color);
+	img.drawBresenhamLine!((ref img, color, Point2 point) =>
+	                       PutPixels(img, color, [point.up(), point.down(), point.left(), point.right(),
+		point.upLeft(), point.upRight(), point.downLeft(), point.downRight()]))
+		(line, Color.CornflowerBlue);
 }
 
-void drawBresenhamLine(alias drawFunc = PutPixel)(FrameBuf img, const ref Point p1, const ref Point p2, Color color)
+void drawBresenhamLine(alias drawFunc = PutPixel)(FrameBuf img, ScreenLine l, Color color)
+{
+	img.drawBresenhamLine!drawFunc(Line2(Point2(l.x1, l.y1), Point2(l.x2, l.y2)), color);
+}
+
+private void drawBresenhamLine(alias drawFunc = PutPixel)(FrameBuf img, Line2 l, Color color)
 {
 	import std.math : abs;
 	import std.algorithm : swap;
-
-	int x1 = p1.x, y1 = p1.y;
-	int x2 = p2.x, y2 = p2.y;
-
-    int dx = abs(x2 - x1);
-    int dy = abs(y2 - y1);
-
+	
+	int x1 = l.x1, y1 = l.y1;
+	int x2 = l.x2, y2 = l.y2;
+	
+	int dx = abs(x2 - x1);
+	int dy = abs(y2 - y1);
+	
 	bool reverse = dx < dy;
-
-    if (reverse)
-    {
+	
+	if (reverse)
+	{
 		swap(x1, y1);
 		swap(x2, y2);
 		swap(dx, dy);
-    }
-    int incUP = -2 * dx +2 * dy;
-    int incDN = 2 * dy;
-
-    int incX = (x1 <= x2)? 1 : -1;
-    int incY = (y1 <= y2)? 1 : -1;
-    int d = -dx + 2 * dy;
-    int x = x1;
-    int y = y1;
-    int n = dx + 1;
-    while (n--)
-    {
-        if(reverse)
-			drawFunc(img, color, Point(y, x));
-        else
-           drawFunc(img, color, Point(x, y));
-
-		yieldIfOnFiber();
-
-        x += incX;
-        if (d > 0)
-        {
-            d += incUP;
-            y += incY;
-        }
-        else
-            d += incDN;
-    }
+	}
+	int incUP = -2 * dx +2 * dy;
+	int incDN = 2 * dy;
+	
+	int incX = (x1 <= x2)? 1 : -1;
+	int incY = (y1 <= y2)? 1 : -1;
+	int d = -dx + 2 * dy;
+	int x = x1;
+	int y = y1;
+	int n = dx + 1;
+	while (n--)
+	{		
+		if (reverse)
+			drawFunc(img, color, Point2(y, x));
+		else
+			drawFunc(img, color, Point2(x, y));
+		
+		x += incX;
+		if (d > 0)
+		{
+			d += incUP;
+			y += incY;
+		}
+		else
+			d += incDN;
+	}
 }
 
-void drawBresenhamLine_FromEndToEnd(alias drawFunc = PutPixel)(FrameBuf img, const ref Point p1, const ref Point p2, Color color1, Color color2)
+void drawBresenhamLine_FromEndToEnd(alias drawFunc = PutPixel)(FrameBuf img, ScreenLine l, Color color1, Color color2)
 {
 	import std.algorithm : swap;
 
-	int x1 = p1.x, y1 = p1.y;
-	int x2 = p2.x, y2 = p2.y;
+	int x1 = l.x1, y1 = l.y1;
+	int x2 = l.x2, y2 = l.y2;
 
     int dx = abs(x2 - x1);
     int dy = abs(y2 - y1);
@@ -249,16 +267,14 @@ void drawBresenhamLine_FromEndToEnd(alias drawFunc = PutPixel)(FrameBuf img, con
     {
         if (reverse)
         {
-			drawFunc(img, color1, Point(y, x));
-			drawFunc(img, color2, Point(y_krai, x_krai));
+			drawFunc(img, color1, Point2(y, x));
+			drawFunc(img, color2, Point2(y_krai, x_krai));
         }
         else
         {
-			drawFunc(img, color1, Point(x, y));
-			drawFunc(img, color2, Point(x_krai, y_krai));
+			drawFunc(img, color1, Point2(x, y));
+			drawFunc(img, color2, Point2(x_krai, y_krai));
         }
-
-		yieldIfOnFiber();
 
         x += incX;
         x_krai -= incX;
@@ -293,7 +309,7 @@ Outcode ComputeOutcode(int x, int y, int xmin, int ymin, int xmax, int ymax)
     return oc;
 }
 
-void CohenSuttherland(FrameBuf img, Line l, Rectangle boundingBox, Color color)
+void CohenSuttherland(FrameBuf img, ScreenLine l, ScreenRectangle boundingBox, Color color)
 {
 	int x1 = l.start.x, y1 = l.start.y;
 	int x2 =   l.end.x,	y2 =   l.end.y;
@@ -360,31 +376,28 @@ void CohenSuttherland(FrameBuf img, Line l, Rectangle boundingBox, Color color)
 
     if (accept == true)
 	{
-		Point p1 = Point(x1, y1), p2 = Point(x2, y2);
-        img.drawBresenhamLine(p1, p2, color);
+        img.drawBresenhamLine(Line2(Point2(x1, y1), Point2(x2, y2)), color);
 	}
 }
 
-void DrawRectangle(FrameBuf img, const ref Point p1, const ref Point p2, Color color)
+void drawRectangle(FrameBuf img, ScreenRectangle rect, Color color)
 {
-	Line v1 = Line(p1.x, p1.y, p1.x, p2.y);
-	Line v2 = Line(p2.x, p1.y, p2.x, p2.y);
-	Line h1 = Line(p1.x, p1.y, p2.x, p1.y);
-	Line h2 = Line(p1.x, p2.y, p2.x, p2.y);
-
-	img.drawBresenhamLine(v1, color);
-	yieldIfOnFiber();
-
-	img.drawBresenhamLine(v2, color);
-	yieldIfOnFiber();
-
-	img.drawBresenhamLine(h1, color);
-	yieldIfOnFiber();
-
+	auto v1 = Line2(Point2(rect.min.x, rect.min.y), Point2(rect.min.x, rect.max.y));
+	auto v2 = Line2(Point2(rect.max.x, rect.min.y), Point2(rect.max.x, rect.max.y));
+	auto h1 = Line2(Point2(rect.min.x, rect.min.y), Point2(rect.max.x, rect.min.y));
+	auto h2 = Line2(Point2(rect.min.x, rect.max.y), Point2(rect.max.x, rect.max.y));
+	
+	img.drawBresenhamLine(v1, color);	
+	img.drawBresenhamLine(v2, color);	
+	img.drawBresenhamLine(h1, color);	
 	img.drawBresenhamLine(h2, color);
-	yieldIfOnFiber();
 }
 
+void drawRectangle(FrameBuf img, ScreenPoint p1, ScreenPoint p2, Color color)
+{
+	auto rect = ScreenRectangle(p1, p2);
+	img.drawRectangle(rect, color);
+}
 
 void drawGradient(FrameBuf img)
 {

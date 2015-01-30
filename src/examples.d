@@ -24,10 +24,7 @@ void task1_var3(FrameBuf img, SdlGui gui)
 	{
 		auto line = getLine();
 		img.drawBresenhamLine(line, Color.Orange);
-		img.drawBresenhamLine!((ref img, color, Point2 point) =>
-		                       PutPixels(img, color, [point.up(), point.down(), point.left(), point.right(),
-			point.upLeft(), point.upRight(), point.downLeft(), point.downRight()]))
-			(line, Color.CornflowerBlue);
+		img.drawBresenhamLineTick(line, Color.Orange);
 		
 		gui.draw(img);
 	}
@@ -43,10 +40,7 @@ void task2_var3(FrameBuf img, SdlGui gui)
 		auto end = getPoint("2: Click elsewhere to set the radius of the circle");
 		int r = center.distanceTo(end);
 		img.drawBresenhamCircle(center, r, Color.CornflowerBlue);
-		img.drawBresenhamCircle!((ref img, color, point) =>
-		                         PutPixels(img, color, [point.up(), point.down(), point.left(), point.right(),
-			point.upLeft(), point.upRight(), point.downLeft(), point.downRight()]))
-			(center, r, Color.CornflowerBlue);
+		img.drawBresenhamCircleTick(center, r, Color.CornflowerBlue);
 		
 		gui.draw(img);
 	}

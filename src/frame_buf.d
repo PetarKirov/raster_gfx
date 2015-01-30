@@ -1,7 +1,7 @@
 module frame_buf;
 
 import ae.utils.graphics.image : Image;
-import primitives : Metrics, Size;
+import primitives : Metrics, Size2;
 
 public import color;
 
@@ -21,10 +21,15 @@ class FrameBuf
 	Color[] pixels() { return img_.pixels; }
 	Color[] scanline(int y) { return img_.scanline(y); }
 
+	void clear(Color val)
+	{
+		pixels[] = val;
+	}
+
 	this(uint screenWidth, uint screenHeight, uint pixelWidth = 1, uint pixelHeight = 1)
 	{
 		this.img_.size(screenWidth / pixelWidth, screenHeight / pixelHeight);
-		this.metrics_ = Metrics(Size(img_.w, img_.h),
-							   Size(pixelWidth, pixelHeight));
+		this.metrics_ = Metrics(Size2(img_.w, img_.h),
+							   Size2(pixelWidth, pixelHeight));
 	}
 }
