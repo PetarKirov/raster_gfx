@@ -32,7 +32,7 @@ void doDraw(FrameBuf image, SdlGui gui, FrameWatch fw)
 	
 	import dots_and_boxes_game;
 	
-	auto game = new DotsAndBoxesGame(image, gui, fw, 2, 2, Player.blue, Player.red);
+	auto game = new DotsAndBoxesGame(image, gui, fw, 5, 3, Player.blue, Player.red);
 	game.gameLoop();
 }
 

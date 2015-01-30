@@ -77,15 +77,15 @@ struct GameBoard
 	private BoxState[] board;
 	private Player currentPlayer_;
 
-	private uint[2] playerPoints;
+	private long[2] playerPoints;
 
 	@property Player currentPlayer() inout { return this.currentPlayer_; }
 
-	@property uint redPlayerPoints() inout { return playerPoints[Player.red - 1]; }
-	@property uint bluePlayerPoints() inout { return playerPoints[Player.blue - 1]; }
+	@property long redPlayerPoints() inout { return playerPoints[Player.red - 1]; }
+	@property long bluePlayerPoints() inout { return playerPoints[Player.blue - 1]; }
 
-	@property uint totalPointsWon() inout { return redPlayerPoints + bluePlayerPoints; }
-	@property uint remainingPoints() inout { return w * h - totalPointsWon; }
+	@property long totalPointsWon() inout { return redPlayerPoints + bluePlayerPoints; }
+	@property long remainingPoints() inout { return w * h - totalPointsWon; }
 
 	@property Player winningPlayer() inout
 	{
@@ -234,12 +234,9 @@ struct GameBoard
 
 	long score(Player p) inout
 	{
-		if (winningPlayer == p)
-			return 10;
-		else if (winningPlayer != p && winningPlayer != Player.none)
-			return -10;
-		else
-			return 0;
+		Player enemy = p == Player.red? Player.blue : Player.red;
+
+		return playerPoints[p - 1] - playerPoints[enemy - 1];
 	}
 
 	Move[] generatePossibleMoves() inout
@@ -263,7 +260,7 @@ struct GameBoard
 	}
 
 	static Move choice;
-	enum maxDepth = 7;
+	enum maxDepth = 3;
 
 	import std.typecons : Tuple, tuple;
 
