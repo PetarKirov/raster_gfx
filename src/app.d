@@ -14,25 +14,26 @@ alias DrawFunc = void function(FrameBuf img, SdlGui gui);
 void main()
 {
 	uint w = 640, h = 480;
-	uint ps = 3; // pixel size
+	uint ps = 2; // pixel size
 	auto fw = new FrameWatch();
 	auto gui = scoped!SdlGui(w, h, "Task 1");
 	auto image = scoped!FrameBuf(w, h, ps, ps);
 
 	fw.start();
-	fw.throttleBack(500.msecs);
 
 	doDraw(image, gui, fw);
 
-	gui.setTitle("Press Esc to exit.");
 	gui.waitForExit();
 }
 
 void doDraw(FrameBuf image, SdlGui gui, FrameWatch fw)
 {
 	mixin drawFuncAdaptors;
-
-	drawWithFunc(&task4_var3, 0.msecs);
+	
+	import dots_and_boxes_game;
+	
+	auto game = new DotsAndBoxesGame(image, gui, fw, 5, 3, Player.blue, Player.red);
+	game.gameLoop();
 }
 
 mixin template drawFuncAdaptors()
