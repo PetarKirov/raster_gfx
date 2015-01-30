@@ -37,12 +37,12 @@ BoxSide getFreeSide(BoxSide boxSides)
 		if ((boxSides & side) == 0)
 			return side;
 	
-	return BoxSide.empty;
+	return BoxSide.all;
 }
 
 immutable(BoxSide[]) getSides()
 {
-	static immutable BoxSide[] sides = [BoxSide.down, BoxSide.up, BoxSide.left, BoxSide.right];
+	static immutable BoxSide[] sides = [BoxSide.up, BoxSide.down, BoxSide.left, BoxSide.right];
 	return sides;
 }
 
@@ -63,93 +63,11 @@ struct BoxState
 	}
 }
 
-
-
-unittest
-{
-	auto bRed = BoxState(BoxSides.all, Player.red);
-	auto bBlue = BoxState(BoxSides.all, Player.blue);
-
-	auto bLeftOnly = BoxState(cast(BoxSides)(BoxSides.up | BoxSides.down | BoxSides.right), Player.none);
-	auto bRightOnly = BoxState(cast(BoxSides)(BoxSides.up | BoxSides.down | BoxSides.left), Player.none);
-	auto bUpOnly = BoxState(cast(BoxSides)(BoxSides.down | BoxSides.left | BoxSides.right), Player.none);
-	auto bDownOnly = BoxState(cast(BoxSides)(BoxSides.up | BoxSides.left | BoxSides.right), Player.none);
-
-	auto bUp = BoxState(BoxSides.up, Player.none);
-	auto bDown = BoxState(BoxSides.down, Player.none);
-	auto bLeft = BoxState(BoxSides.left, Player.none);
-	auto bRight = BoxState(BoxSides.right, Player.none);
-
-	assert(bRed.getFreeSide == BoxSides.empty);
-	assert(bBlue.getFreeSide == BoxSides.empty);
-
-	assert(bLeftOnly.getFreeSide == BoxSides.left);
-	assert(bRightOnly.getFreeSide == BoxSides.right);
-	assert(bUpOnly.getFreeSide == BoxSides.up);
-	assert(bDownOnly.getFreeSide == BoxSides.down);
-
-	assert(bUp.getFreeSide != BoxSides.empty && bUp.getFreeSide != BoxSides.all && bUp.getFreeSide != BoxSides.up);
-	assert(bDown.getFreeSide != BoxSides.empty && bDown.getFreeSide != BoxSides.all && bDown.getFreeSide != BoxSides.down);
-	assert(bLeft.getFreeSide != BoxSides.empty && bLeft.getFreeSide != BoxSides.all && bLeft.getFreeSide != BoxSides.left);
-	assert(bRight.getFreeSide != BoxSides.empty && bRight.getFreeSide != BoxSides.all && bRight.getFreeSide != BoxSides.right);
-}
-
-struct Point
-{
-	ubyte x;
-	ubyte y;
-
-	Point neighbour(BoxSide side)
-	{
-		switch (side) with (BoxSide)
-		{
-			case up: return Point(x, cast(ubyte)(y - 1));
-			case down: return Point(x, cast(ubyte)(y + 1));
-			case left: return Point(cast(ubyte)(x - 1), y);
-			case right: return Point(cast(ubyte)(x + 1), y);
-			default: assert(0);
-		}
-	}
-}
-
-struct Size
-{
-	ubyte w;
-	ubyte h;
-
-	bool inRange(Point p)
-	{
-		return p.x >= 0 && p.x < this.w &&
-			p.y >= 0 && p.y < this.h;
-	}
-}
-
-struct PointF
-{
-	float x;
-	float y;
-
-	PointF opSub(PointF other)
-	{
-		return PointF(x - other.x, y - other.y);
-	}
-
-	PointF opDiv(SizeF size)
-	{
-		return PointF(x / size.w, y / size.h);
-	}
-}
-
-struct SizeF
-{
-	float w;
-	float h;
-}
-
 struct Move
 {
 	Point position;
 	BoxSide side;
+	bool noMoreMoves = false;
 }
 
 struct GameBoard
@@ -159,17 +77,17 @@ struct GameBoard
 	private BoxState[] board;
 	private Player currentPlayer_;
 
-	private uint[3] playerPoints;
+	private uint[2] playerPoints;
 
-	@property Player currentPlayer() { return this.currentPlayer_; }
+	@property Player currentPlayer() inout { return this.currentPlayer_; }
 
-	@property uint redPlayerPoints() { return playerPoints[Player.red]; }
-	@property uint bluePlayerPoints() { return playerPoints[Player.blue]; }
+	@property uint redPlayerPoints() inout { return playerPoints[Player.red - 1]; }
+	@property uint bluePlayerPoints() inout { return playerPoints[Player.blue - 1]; }
 
-	@property uint totalPointsWon() { return redPlayerPoints + bluePlayerPoints; }
-	@property uint remainingPoints() { return w * h - (redPlayerPoints + bluePlayerPoints); }
+	@property uint totalPointsWon() inout { return redPlayerPoints + bluePlayerPoints; }
+	@property uint remainingPoints() inout { return w * h - totalPointsWon; }
 
-	@property Player winningPlayer()
+	@property Player winningPlayer() inout
 	{
 		if (redPlayerPoints > bluePlayerPoints)
 			return Player.red;
@@ -189,15 +107,27 @@ struct GameBoard
 		this.h = gameHeight;
 		this.board = newBoard;
 		this.currentPlayer_ = startingPlayer;
-		playerPoints = [0, 0, 0];
+		playerPoints = [0, 0];
 	}
 
-	BoxState get(Point pos)
+	GameBoard clone() inout
+	{
+		GameBoard res;
+		res.reset(w, h, currentPlayer);
+
+		auto newBoard = new BoxState[w * h];
+		newBoard[] = this.board[];
+		res.board = newBoard;		
+
+		return res;
+	}
+
+	BoxState get(Point pos) inout
 	{
 		return this[pos.x, pos.y];
 	}
 
-	private ref BoxState opIndex(uint x, uint y)
+	private ref inout(BoxState) opIndex(uint x, uint y) inout
 	{
 		if (!(x < w))
 			assert(0);
@@ -235,10 +165,10 @@ struct GameBoard
 			claimBox(neighbour);
 		}
 
-		if (this[i, j].sides != BoxSide.all)
-			this.changeTurn();
-		else
+		if (this[i, j].sides == BoxSide.all || (this.size.inRange(neighbour) && this.get(neighbour).sides == BoxSide.all))
 			this.claimBox(m.position); // Gain additional turn
+		else
+			this.changeTurn();
 
 		return remainingPoints != 0;
 	}
@@ -261,7 +191,7 @@ struct GameBoard
 		{
 			this[pos.x, pos.y].belongsTo = this.currentPlayer;
 
-			playerPoints[currentPlayer]++;
+			playerPoints[currentPlayer - 1]++;
 		}
 	}
 
@@ -288,10 +218,10 @@ struct GameBoard
 
 		import std.random : uniform;
 
-		BoxSide side;
+		BoxSide side = BoxSide.all;
 		size_t idx;
 
-		while (side == BoxSide.empty)
+		while (side == BoxSide.all)
 		{
 			idx = uniform(0, board.length);
 
@@ -300,6 +230,109 @@ struct GameBoard
 
 		m = Move(Point(cast(ubyte)(idx % w), cast(ubyte)(idx / w)), side);
 		return true;
+	}
+
+	long score(Player p) inout
+	{
+		if (winningPlayer == p)
+			return 10;
+		else if (winningPlayer != p && winningPlayer != Player.none)
+			return -10;
+		else
+			return 0;
+	}
+
+	Move[] generatePossibleMoves() inout
+	{
+		Move[] result;
+
+		foreach(ubyte y; 0 .. this.h)
+		{
+			foreach (ubyte x; 0 .. this.w)
+			{
+				if (this.get(Point(x, y)).sides != BoxSide.all)
+				{
+					auto box = this.get(Point(x, y));
+					auto move =  Move(Point(x, y), box.sides.getFreeSide);
+					result ~= move;
+				}
+			}
+		}
+
+		return result;
+	}
+
+	static Move choice;
+	enum maxDepth = 7;
+
+	import std.typecons : Tuple, tuple;
+
+	alias MinimaxRes = Tuple!(long, Move);
+
+	static MinimaxRes minimax(const ref GameBoard game, Player targetPlayer, uint depth)
+	{
+		if (game.remainingPoints == 0 || depth >= maxDepth)
+			return tuple(game.score(targetPlayer), Move.init);
+
+		auto allPossibleMoves = game.generatePossibleMoves();
+		size_t len = allPossibleMoves.length;
+
+		import std.stdio : writefln;
+		writefln("minimax at %s depth, %s possible moves", depth, len);
+
+		import std.algorithm : min, max;
+		if (game.currentPlayer == targetPlayer) // This is the max calculation
+		{			
+			long bestValue = long.min;
+			Move bestMove;
+
+			foreach (move; allPossibleMoves)
+			{
+				auto possible_game = game.clone();
+				possible_game.set(move);
+				long val = minimax(possible_game, targetPlayer, depth + 1)[0];
+
+				if (val > bestValue)
+				{
+					bestValue = val;
+					bestMove = move;
+				}
+			}
+			
+			return tuple(bestValue, bestMove);
+		}
+		else // This is the min calculation
+		{			
+			long bestValue = long.max;
+			Move bestMove;
+
+			foreach (move; allPossibleMoves)
+			{
+				auto possible_game = game.clone();
+				possible_game.set(move);
+				long val = minimax(possible_game, targetPlayer, depth + 1)[0];
+				
+				if (val < bestValue)
+				{
+					bestValue = val;
+					bestMove = move;
+				}
+			}
+
+			return tuple(bestValue, bestMove);
+		}
+	}
+
+	bool nextPossibleMinMaxMove(ref Move m)
+	{
+		auto res = minimax(this, currentPlayer, 0);
+
+		m = res[1];
+
+		if (m != Move.init)
+			return true;
+		else
+			return false;
 	}
 }
 
@@ -330,8 +363,8 @@ class DotsAndBoxesGame
 
 		ui.setTitle("Dots and boxes game");
 		ui.clearFrameBuf();
-		ui.wait(500.msecs);
-		ui.drawSlowly();
+		//ui.wait(500.msecs);
+		ui.draw();
 
 		while (gameRunning)
 		{
@@ -361,7 +394,7 @@ class DotsAndBoxesGame
 			"%s player clicked %s side of box at (%s, %s).".writefln(gameBoard.currentPlayer, move.side, move.position.x, move.position.y);
 		}
 		while (gameRunning && (move.side == BoxSide.empty
-		       || (gameBoard.get(move.position).sides & move.side) != 0));
+		       || (gameBoard.get(move.position).sides & move.side) != 0) && move.noMoreMoves != false);
 		       
 		ui.drawNewSide(move.position, move.side);
 
@@ -387,8 +420,8 @@ class DotsAndBoxesGame
 	{
 		Move m;
 
-		if (!gameBoard.nextRandomPossibleMove(m))
-			assert(0);
+		if (!gameBoard.nextPossibleMinMaxMove(m))
+			m.noMoreMoves = true;
 
 		return m;
 	}
@@ -425,7 +458,7 @@ private class DotsAndBoxesUI
 	enum bluePlayerColor = Color.SteelBlue;
 	enum backgroundColor = Color.Gainsboro;
 
-	enum animationStopTime = 8.msecs;
+	enum animationStopTime = 0.msecs;
 
 	this(FrameBuf img, SdlGui gui, FrameWatch fw, DotsAndBoxesGame game)
 	{
@@ -678,6 +711,87 @@ private class DotsAndBoxesUI
 	}
 }
 
+unittest
+{
+	auto bRed = BoxState(BoxSides.all, Player.red);
+	auto bBlue = BoxState(BoxSides.all, Player.blue);
+
+	auto bLeftOnly = BoxState(cast(BoxSides)(BoxSides.up | BoxSides.down | BoxSides.right), Player.none);
+	auto bRightOnly = BoxState(cast(BoxSides)(BoxSides.up | BoxSides.down | BoxSides.left), Player.none);
+	auto bUpOnly = BoxState(cast(BoxSides)(BoxSides.down | BoxSides.left | BoxSides.right), Player.none);
+	auto bDownOnly = BoxState(cast(BoxSides)(BoxSides.up | BoxSides.left | BoxSides.right), Player.none);
+
+	auto bUp = BoxState(BoxSides.up, Player.none);
+	auto bDown = BoxState(BoxSides.down, Player.none);
+	auto bLeft = BoxState(BoxSides.left, Player.none);
+	auto bRight = BoxState(BoxSides.right, Player.none);
+
+	assert(bRed.getFreeSide == BoxSides.all);
+	assert(bBlue.getFreeSide == BoxSides.all);
+
+	assert(bLeftOnly.getFreeSide == BoxSides.left);
+	assert(bRightOnly.getFreeSide == BoxSides.right);
+	assert(bUpOnly.getFreeSide == BoxSides.up);
+	assert(bDownOnly.getFreeSide == BoxSides.down);
+
+	assert(bUp.getFreeSide != BoxSides.all && bUp.getFreeSide != BoxSides.all && bUp.getFreeSide != BoxSides.up);
+	assert(bDown.getFreeSide != BoxSides.all && bDown.getFreeSide != BoxSides.all && bDown.getFreeSide != BoxSides.down);
+	assert(bLeft.getFreeSide != BoxSides.all && bLeft.getFreeSide != BoxSides.all && bLeft.getFreeSide != BoxSides.left);
+	assert(bRight.getFreeSide != BoxSides.all && bRight.getFreeSide != BoxSides.all && bRight.getFreeSide != BoxSides.right);
+}
+
+struct Point
+{
+	ubyte x;
+	ubyte y;
+
+	Point neighbour(BoxSide side)
+	{
+		switch (side) with (BoxSide)
+		{
+			case up: return Point(x, cast(ubyte)(y - 1));
+			case down: return Point(x, cast(ubyte)(y + 1));
+			case left: return Point(cast(ubyte)(x - 1), y);
+			case right: return Point(cast(ubyte)(x + 1), y);
+			default: assert(0);
+		}
+	}
+}
+
+struct Size
+{
+	ubyte w;
+	ubyte h;
+
+	bool inRange(Point p)
+	{
+		return p.x >= 0 && p.x < this.w &&
+			p.y >= 0 && p.y < this.h;
+	}
+}
+
+struct PointF
+{
+	float x;
+	float y;
+
+	PointF opSub(PointF other)
+	{
+		return PointF(x - other.x, y - other.y);
+	}
+
+	PointF opDiv(SizeF size)
+	{
+		return PointF(x / size.w, y / size.h);
+	}
+}
+
+struct SizeF
+{
+	float w;
+	float h;
+}
+
 float clamp(ref float val, float min, float max, float maxDelta)
 {
 	if (val >= min && val <= max)
@@ -692,3 +806,34 @@ float clamp(ref float val, float min, float max, float maxDelta)
 	
 	return val;
 }
+
+size_t maxPos(uint[] arr)
+{
+	uint max = uint.min;
+	size_t pos = 0;
+
+	foreach (i, x; arr)
+		if (x >= max)
+		{
+			max = x;
+			pos = i;
+		}
+
+	return pos;
+}
+
+size_t minPos(uint[] arr)
+{
+	uint min = uint.max;
+	size_t pos = 0;
+
+	foreach (i, x; arr)
+		if (x <= min)
+		{
+			min = x;
+			pos = i;
+		}
+
+	return pos;
+}
+
