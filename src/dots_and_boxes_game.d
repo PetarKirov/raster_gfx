@@ -2,6 +2,37 @@ module dots_and_boxes_game;
 
 import frame_buf, frame_watch, sdl_gui;
 
+struct Move
+{
+	Point position;
+	BoxSide side;
+	MoveType type;
+
+	private @disable this();
+
+	private this(Point position, BoxSide side, MoveType type)
+	{
+		this.position = position;
+		this.side = side;
+		this.type = type;
+	}
+
+	static Move validMove(Point position, BoxSide side)
+	{
+		return Move(position, side, MoveType.valid);
+	}
+
+	static Move invalidMove()
+	{
+		return Move(Point.init, BoxSide.init, MoveType.invalid);
+	}
+
+	static Move impossibleMove()
+	{
+		return Move(Point.init, BoxSide.init, MoveType.impossible);
+	}
+}
+
 enum Player : ubyte
 {
 	none,
@@ -17,6 +48,13 @@ enum BoxSide : ubyte
 	left	= 0b0100,
 	right	= 0b1000,
 	all		= 0b1111,
+}
+
+enum MoveType
+{
+	invalid,		/// E.g. user clicked outside of the game board
+	impossible,		/// E.g. AI can't make a desicion
+	valid
 }
 
 BoxSide opposite(BoxSide side)
@@ -61,13 +99,6 @@ struct BoxState
 		this.belongsTo = belongsTo;
 		this.sides = sides;
 	}
-}
-
-struct Move
-{
-	Point position;
-	BoxSide side;
-	bool noMoreMoves = false;
 }
 
 struct GameBoard
@@ -125,6 +156,14 @@ struct GameBoard
 	BoxState get(Point pos) inout
 	{
 		return this[pos.x, pos.y];
+	}
+
+	bool isMoveValid(Move move)
+	{
+		bool res =  (this.get(move.position).sides & move.side) == 0 &&
+			this.size.inRange(move.position);
+
+		return res;
 	}
 
 	private ref inout(BoxState) opIndex(uint x, uint y) inout
@@ -195,26 +234,27 @@ struct GameBoard
 		}
 	}
 
-	bool nextPossibleMove(ref Move m)
+	Move nextPossibleMove()
 	{
+		if (remainingPoints == 0)
+			return Move.impossibleMove();
+
 		foreach(ubyte y; 0 .. this.h)
 			foreach (ubyte x; 0 .. this.w)
 				if (this.get(Point(x, y)).sides != BoxSide.all)
 				{
 					auto box = this.get(Point(x, y));
 					
-					m = Move(Point(x, y), box.sides.getFreeSide);
-					
-					return true;
+					return Move(Point(x, y), box.sides.getFreeSide, MoveType.valid);
 				}
 		
-		return false;
+		assert(0, "if there are no possible moves, remainingPoints should be 0!");
 	}
 
-	bool nextRandomPossibleMove(ref Move m)
+	Move nextRandomPossibleMove()
 	{
 		if (remainingPoints == 0)
-			return false;
+			return Move.impossibleMove();
 
 		import std.random : uniform;
 
@@ -228,8 +268,7 @@ struct GameBoard
 			side = board[idx].sides.getFreeSide;
 		}
 
-		m = Move(Point(cast(ubyte)(idx % w), cast(ubyte)(idx / w)), side);
-		return true;
+		return Move.validMove(Point(cast(ubyte)(idx % w), cast(ubyte)(idx / w)), side);
 	}
 
 	long score(Player p) inout
@@ -250,7 +289,7 @@ struct GameBoard
 				if (this.get(Point(x, y)).sides != BoxSide.all)
 				{
 					auto box = this.get(Point(x, y));
-					auto move =  Move(Point(x, y), box.sides.getFreeSide);
+					auto move =  Move.validMove(Point(x, y), box.sides.getFreeSide);
 					result ~= move;
 				}
 			}
@@ -259,49 +298,25 @@ struct GameBoard
 		return result;
 	}
 
-	static Move choice;
-	enum maxDepth = 3;
-
 	import std.typecons : Tuple, tuple;
 
-	alias MinimaxRes = Tuple!(long, Move);
 
-	static MinimaxRes minimax(const ref GameBoard game, Player targetPlayer, uint depth)
+	Move nextPossibleMinMaxMove(uint maxDepth = 3)
 	{
-		if (game.remainingPoints == 0 || depth >= maxDepth)
-			return tuple(game.score(targetPlayer), Move.init);
-
-		auto allPossibleMoves = game.generatePossibleMoves();
-		size_t len = allPossibleMoves.length;
-
-		import std.stdio : writefln;
-		writefln("minimax at %s depth, %s possible moves", depth, len);
-
-		import std.algorithm : min, max;
-		if (game.currentPlayer == targetPlayer) // This is the max calculation
-		{			
-			long bestValue = long.min;
-			Move bestMove;
-
-			foreach (move; allPossibleMoves)
-			{
-				auto possible_game = game.clone();
-				possible_game.set(move);
-				long val = minimax(possible_game, targetPlayer, depth + 1)[0];
-
-				if (val > bestValue)
-				{
-					bestValue = val;
-					bestMove = move;
-				}
-			}
+		Tuple!(long, Move) minimax(const ref GameBoard game, Player targetPlayer, uint depth)
+		{
+			if (game.remainingPoints == 0 || depth >= maxDepth)
+				return tuple(game.score(targetPlayer), Move.impossibleMove());
 			
-			return tuple(bestValue, bestMove);
-		}
-		else // This is the min calculation
-		{			
-			long bestValue = long.max;
-			Move bestMove;
+			auto allPossibleMoves = game.generatePossibleMoves();
+			size_t len = allPossibleMoves.length;
+			
+			import std.stdio : writefln;
+			writefln("minimax at %s depth, %s possible moves", depth, len);
+
+			bool isTargetPlayer = game.currentPlayer == targetPlayer;
+			long bestValue = isTargetPlayer? long.min : long.max;
+			Move bestMove = Move.invalidMove();
 
 			foreach (move; allPossibleMoves)
 			{
@@ -309,7 +324,12 @@ struct GameBoard
 				possible_game.set(move);
 				long val = minimax(possible_game, targetPlayer, depth + 1)[0];
 				
-				if (val < bestValue)
+				if (isTargetPlayer && val > bestValue)
+				{
+					bestValue = val;
+					bestMove = move;
+				}
+				if (!isTargetPlayer && val < bestValue)
 				{
 					bestValue = val;
 					bestMove = move;
@@ -318,18 +338,10 @@ struct GameBoard
 
 			return tuple(bestValue, bestMove);
 		}
-	}
 
-	bool nextPossibleMinMaxMove(ref Move m)
-	{
 		auto res = minimax(this, currentPlayer, 0);
 
-		m = res[1];
-
-		if (m != Move.init)
-			return true;
-		else
-			return false;
+		return res[1];
 	}
 }
 
@@ -360,7 +372,7 @@ class DotsAndBoxesGame
 
 		ui.setTitle("Dots and boxes game");
 		ui.clearFrameBuf();
-		//ui.wait(500.msecs);
+		ui.wait(500.msecs);
 		ui.draw();
 
 		while (gameRunning)
@@ -382,21 +394,24 @@ class DotsAndBoxesGame
 	{
 		import std.stdio : writefln;
 
-		Move move;
+		Move move = Move.invalidMove();
 
 		do
 		{
 			move = getMove();
 
-			"%s player clicked %s side of box at (%s, %s).".writefln(gameBoard.currentPlayer, move.side, move.position.x, move.position.y);
+			"%s player clicked %s side of box at (%s, %s)."
+				.writefln(gameBoard.currentPlayer, move.side, move.position.x, move.position.y);
 		}
-		while (gameRunning && (move.side == BoxSide.empty
-		       || (gameBoard.get(move.position).sides & move.side) != 0) && move.noMoreMoves != false);
-		       
+		while (gameRunning && move.type != MoveType.impossible &&
+		       (move.type == MoveType.invalid || !gameBoard.isMoveValid(move)));
+
+		gameBoard.set(move);
+
 		ui.drawNewSide(move.position, move.side);
 
-		if (gameRunning)
-			return gameBoard.set(move);
+		if (!gameRunning || move.type == MoveType.impossible )
+			return false;
 		else
 			return true;
 	}
@@ -408,19 +423,9 @@ class DotsAndBoxesGame
 		ui.setTitle("%s player turn".format(gameBoard.currentPlayer));
 
 		if (ai == gameBoard.currentPlayer)
-			return getAIMove();
+			return gameBoard.nextPossibleMinMaxMove();
 		else
 			return ui.getPlayerMove();
-	}
-	
-	Move getAIMove()
-	{
-		Move m;
-
-		if (!gameBoard.nextPossibleMinMaxMove(m))
-			m.noMoreMoves = true;
-
-		return m;
 	}
 
 	void endGame()
@@ -591,7 +596,7 @@ private class DotsAndBoxesUI
 		clamp(relPosGameBoard.y, 0.0, 0.975, 0.05);
 
 		if (relPosGameBoard.x == float.infinity || relPosGameBoard.y == float.infinity)
-			return Move.init;
+			return Move.invalidMove();
 
 		auto size = game.gameBoard.size();
 
@@ -605,7 +610,10 @@ private class DotsAndBoxesUI
 		ubyte x = cast(ubyte)xF;
 		ubyte y = cast(ubyte)yF;
 
-		return Move(Point(x, y), closestSide);
+		if (closestSide != BoxSide.empty)
+			return Move.validMove(Point(x, y), closestSide);
+		else
+			return Move.invalidMove();
 	}
 
 	void drawNewSide(Point pos, BoxSide newSide)
@@ -803,34 +811,3 @@ float clamp(ref float val, float min, float max, float maxDelta)
 	
 	return val;
 }
-
-size_t maxPos(uint[] arr)
-{
-	uint max = uint.min;
-	size_t pos = 0;
-
-	foreach (i, x; arr)
-		if (x >= max)
-		{
-			max = x;
-			pos = i;
-		}
-
-	return pos;
-}
-
-size_t minPos(uint[] arr)
-{
-	uint min = uint.max;
-	size_t pos = 0;
-
-	foreach (i, x; arr)
-		if (x <= min)
-		{
-			min = x;
-			pos = i;
-		}
-
-	return pos;
-}
-

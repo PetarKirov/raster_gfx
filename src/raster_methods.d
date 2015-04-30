@@ -146,7 +146,11 @@ private void fill_impl(alias pred, alias drawFunc = PutPixels, Args...)
 
 	foreach (func; funcs)
 	{
-		Point2[] newP2 = remaining.map!( x => func(x)).array;
+		Point2[] newP2;
+		foreach (x; remaining)
+		{
+			newP2 ~= func(x);
+		}
 
 		img.fill_impl!pred(newP2, newC, otherC, funcs);
 	}
